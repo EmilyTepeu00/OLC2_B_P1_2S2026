@@ -7,4 +7,5 @@ __pycache__/
 .idea/
 *.log
 .DS_Store
-Thumbs.db
+Thumbs.dbbackend/parser.out
+backend/parsetab.py

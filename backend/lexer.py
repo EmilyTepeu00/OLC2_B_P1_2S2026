@@ -39,46 +39,46 @@ reserved = {
 # LISTA DE TOKENS
 tokens = [
     'ID', 'INTEGER', 'FLOAT', 'STRING', 'CHAR_LITERAL',
-    'EQUALS', 'PLUS_EQUALS', 'MINUS_EQUALS', 'MULT_EQUALS', 'DIV_EQUALS',
-    'PLUS', 'MINUS', 'MULTIPLY', 'DIVIDE', 'MODULO',
-    'EQUAL_EQUAL', 'NOT_EQUAL', 'GREATER', 'GREATER_EQUAL', 'LESS', 'LESS_EQUAL',
-    'AND', 'OR', 'NOT',
-    'LPAREN', 'RPAREN', 'LBRACE', 'RBRACE', 'LBRACKET', 'RBRACKET',
-    'SEMICOLON', 'COLON', 'COMMA', 'DOT', 'ARROW', 'RANGE',
+    'ASIGN', 'MASIGUAL', 'MENOSIGUAL', 'MULTIGUAL', 'DIVIGUAL',
+    'SUMA', 'RESTA', 'MULT', 'DIV', 'RESTO',
+    'IGUAL', 'DIFERENTE', 'MAYOR', 'MAYORIGUAL', 'MENOR', 'MENORIGUAL',
+    'Y', 'O', 'NO',
+    'PARENIZQ', 'PARENDER', 'LLAVEIZQ', 'LLAVEDER', 'CORCHIZQ', 'CORCHDER',
+    'PUNTOCOMA', 'DOSPUNTOS', 'COMA', 'PUNTO', 'FLECHA', 'RANGO',
 ] + list(reserved.values())
 
 # TOKENS SIMPLES
-t_PLUS = r'\+'
-t_MINUS = r'-'
-t_MULTIPLY = r'\*'
-t_DIVIDE = r'/'
-t_MODULO = r'%'
-t_EQUALS = r'='
-t_PLUS_EQUALS = r'\+='
-t_MINUS_EQUALS = r'-='
-t_MULT_EQUALS = r'\*='
-t_DIV_EQUALS = r'/='
-t_EQUAL_EQUAL = r'=='
-t_NOT_EQUAL = r'!='
-t_GREATER = r'>'
-t_GREATER_EQUAL = r'>='
-t_LESS = r'<'
-t_LESS_EQUAL = r'<='
-t_AND = r'&&'
-t_OR = r'\|\|'
-t_NOT = r'!'
-t_LPAREN = r'\('
-t_RPAREN = r'\)'
-t_LBRACE = r'\{'
-t_RBRACE = r'\}'
-t_LBRACKET = r'\['
-t_RBRACKET = r'\]'
-t_SEMICOLON = r';'
-t_COLON = r':'
-t_COMMA = r','
-t_DOT = r'\.'
-t_ARROW = r'->'
-t_RANGE = r'\.\.'
+t_SUMA = r'\+'
+t_RESTA = r'-'
+t_MULT = r'\*'
+t_DIV = r'/'
+t_RESTO = r'%'
+t_ASIGN = r'='
+t_MASIGUAL = r'\+='
+t_MENOSIGUAL = r'-='
+t_MULTIGUAL = r'\*='
+t_DIVIGUAL = r'/='
+t_IGUAL = r'=='
+t_DIFERENTE = r'!='
+t_MAYOR = r'>'
+t_MAYORIGUAL = r'>='
+t_MENOR = r'<'
+t_MENORIGUAL = r'<='
+t_Y = r'&&'
+t_O = r'\|\|'
+t_NO = r'!'
+t_PARENIZQ = r'\('
+t_PARENDER = r'\)'
+t_LLAVEIZQ = r'\{'
+t_LLAVEDER = r'\}'
+t_CORCHIZQ = r'\['
+t_CORCHDER = r'\]'
+t_PUNTOCOMA = r';'
+t_DOSPUNTOS = r':'
+t_COMA = r','
+t_PUNTO = r'\.'
+t_FLECHA = r'->'
+t_RANGO = r'\.\.'
 
 t_ignore = ' \t'
 
@@ -108,7 +108,7 @@ def t_CHAR_LITERAL(t):
     t.value = t.value[1:-1]
     return t
 
-# Comentarios
+# COMENTARIOS
 def t_COMMENT_LINE(t):
     r'//[^\n]*'
     pass
@@ -143,4 +143,4 @@ if __name__ == "__main__":
     """
     lexer.input(test)
     for tok in lexer:
-        print(f"{tok.type:15} | {str(tok.value):15} | Línea {tok.lineno}")
+        print(f"{tok.type:15} | {str(tok.value):15} | Linea {tok.lineno}")
