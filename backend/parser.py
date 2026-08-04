@@ -3,43 +3,42 @@
 import ply.yacc as yacc
 from backend.lexer import tokens, lexer
 
-parse_errors = []
+errores_parseo = []
 
-start = 'program'
+inicio = 'programa'
 
-precedence = (
+precedencia = (
     ('left', 'SUMA', 'RESTA'),
     ('left', 'MULT', 'DIV', 'RESTO'),
-    ('right', 'NO'),
 )
 
-def p_program(p):
-    "program : function_list"
-    p[0] = ('program', p[1])
+def p_programa(p):
+    "programa : lista_funciones"
+    p[0] = ('programa', p[1])
 
-def p_function_list(p):
-    """function_list : function
-                     | function_list function"""
+def p_lista_funciones(p):
+    """lista_funciones : funcion
+                       | lista_funciones funcion"""
     if len(p) == 2:
         p[0] = [p[1]]
     else:
         p[0] = p[1] + [p[2]]
 
-def p_function(p):
-    """function : FN ID PARENIZQ param_list PARENDER FLECHA type LLAVEIZQ statement_list LLAVEDER
-                | FN ID PARENIZQ param_list PARENDER LLAVEIZQ statement_list LLAVEDER
-                | FN MAIN PARENIZQ param_list PARENDER LLAVEIZQ statement_list LLAVEDER"""
+def p_funcion(p):
+    """funcion : FN ID PARENIZQ lista_parametros PARENDER FLECHA tipo LLAVEIZQ lista_sentencias LLAVEDER
+               | FN ID PARENIZQ lista_parametros PARENDER LLAVEIZQ lista_sentencias LLAVEDER
+               | FN MAIN PARENIZQ lista_parametros PARENDER LLAVEIZQ lista_sentencias LLAVEDER"""
     if len(p) == 11:
-        p[0] = ('function', p[2], p[4], p[7], p[9])
+        p[0] = ('funcion', p[2], p[4], p[7], p[9])
     elif len(p) == 10 and p[2] != 'main':
-        p[0] = ('function', p[2], p[4], None, p[7])
+        p[0] = ('funcion', p[2], p[4], None, p[7])
     else:
-        p[0] = ('function', 'main', p[4], None, p[7])
+        p[0] = ('funcion', 'main', p[4], None, p[7])
 
-def p_param_list(p):
-    """param_list : 
-                  | param
-                  | param_list COMA param"""
+def p_lista_parametros(p):
+    """lista_parametros : 
+                        | parametro
+                        | lista_parametros COMA parametro"""
     if len(p) == 1:
         p[0] = []
     elif len(p) == 2:
@@ -47,12 +46,12 @@ def p_param_list(p):
     else:
         p[0] = p[1] + [p[3]]
 
-def p_param(p):
-    "param : ID DOSPUNTOS type"
+def p_parametro(p):
+    "parametro : ID DOSPUNTOS tipo"
     p[0] = (p[1], p[3])
 
-def p_type(p):
-    """type : I32
+def p_tipo(p):
+    """tipo : I32
             | F64
             | BOOL
             | STRING_TYPE
@@ -60,10 +59,10 @@ def p_type(p):
             | ID"""
     p[0] = p[1]
 
-def p_statement_list(p):
-    """statement_list : 
-                      | statement
-                      | statement_list statement"""
+def p_lista_sentencias(p):
+    """lista_sentencias : 
+                        | sentencia
+                        | lista_sentencias sentencia"""
     if len(p) == 1:
         p[0] = []
     elif len(p) == 2:
@@ -71,26 +70,26 @@ def p_statement_list(p):
     else:
         p[0] = p[1] + [p[2]]
 
-def p_statement(p):
-    """statement : let_declaration
-                 | assignment
-                 | if_statement
-                 | while_statement
-                 | loop_statement
-                 | match_statement
-                 | return_statement
-                 | break_statement
-                 | continue_statement
-                 | expression PUNTOCOMA"""
+def p_sentencia(p):
+    """sentencia : declaracion_let
+                 | asignacion
+                 | sentencia_if
+                 | sentencia_while
+                 | sentencia_loop
+                 | sentencia_match
+                 | sentencia_return
+                 | sentencia_break
+                 | sentencia_continue
+                 | expresion PUNTOCOMA"""
     p[0] = p[1]
 
-def p_let_declaration(p):
-    """let_declaration : LET ID DOSPUNTOS type ASIGN expression PUNTOCOMA
-                       | LET ID ASIGN expression PUNTOCOMA
-                       | LET MUT ID DOSPUNTOS type ASIGN expression PUNTOCOMA
-                       | LET MUT ID ASIGN expression PUNTOCOMA
-                       | LET ID DOSPUNTOS type PUNTOCOMA
-                       | LET MUT ID DOSPUNTOS type PUNTOCOMA"""
+def p_declaracion_let(p):
+    """declaracion_let : LET ID DOSPUNTOS tipo ASIGN expresion PUNTOCOMA
+                       | LET ID ASIGN expresion PUNTOCOMA
+                       | LET MUT ID DOSPUNTOS tipo ASIGN expresion PUNTOCOMA
+                       | LET MUT ID ASIGN expresion PUNTOCOMA
+                       | LET ID DOSPUNTOS tipo PUNTOCOMA
+                       | LET MUT ID DOSPUNTOS tipo PUNTOCOMA"""
     if len(p) == 8 and p[2] != 'mut':
         p[0] = ('let', p[2], p[4], p[6], False)
     elif len(p) == 6 and p[2] != 'mut':
@@ -104,14 +103,14 @@ def p_let_declaration(p):
     elif len(p) == 7 and p[2] == 'mut':
         p[0] = ('let', p[3], p[5], None, True)
 
-def p_assignment(p):
-    "assignment : ID ASIGN expression PUNTOCOMA"
-    p[0] = ('assign', p[1], p[3])
+def p_asignacion(p):
+    "asignacion : ID ASIGN expresion PUNTOCOMA"
+    p[0] = ('asignar', p[1], p[3])
 
-def p_if_statement(p):
-    """if_statement : IF expression LLAVEIZQ statement_list LLAVEDER
-                    | IF expression LLAVEIZQ statement_list LLAVEDER ELSE LLAVEIZQ statement_list LLAVEDER
-                    | IF expression LLAVEIZQ statement_list LLAVEDER ELSE if_statement"""
+def p_sentencia_if(p):
+    """sentencia_if : IF expresion LLAVEIZQ lista_sentencias LLAVEDER
+                    | IF expresion LLAVEIZQ lista_sentencias LLAVEDER ELSE LLAVEIZQ lista_sentencias LLAVEDER
+                    | IF expresion LLAVEIZQ lista_sentencias LLAVEDER ELSE sentencia_if"""
     if len(p) == 6:
         p[0] = ('if', p[2], p[4], None)
     elif len(p) == 10:
@@ -119,90 +118,90 @@ def p_if_statement(p):
     else:
         p[0] = ('if', p[2], p[5], p[7])
 
-def p_while_statement(p):
-    "while_statement : WHILE expression LLAVEIZQ statement_list LLAVEDER"
+def p_sentencia_while(p):
+    "sentencia_while : WHILE expresion LLAVEIZQ lista_sentencias LLAVEDER"
     p[0] = ('while', p[2], p[4])
 
-def p_loop_statement(p):
-    """loop_statement : LOOP LLAVEIZQ statement_list LLAVEDER
-                      | ID DOSPUNTOS LOOP LLAVEIZQ statement_list LLAVEDER"""
+def p_sentencia_loop(p):
+    """sentencia_loop : LOOP LLAVEIZQ lista_sentencias LLAVEDER
+                      | ID DOSPUNTOS LOOP LLAVEIZQ lista_sentencias LLAVEDER"""
     if len(p) == 5:
         p[0] = ('loop', None, p[3])
     else:
         p[0] = ('loop', p[1], p[5])
 
-def p_match_statement(p):
-    "match_statement : MATCH expression LLAVEIZQ match_cases LLAVEDER"
+def p_sentencia_match(p):
+    "sentencia_match : MATCH expresion LLAVEIZQ casos_match LLAVEDER"
     p[0] = ('match', p[2], p[4])
 
-def p_match_cases(p):
-    """match_cases : match_case
-                   | match_cases match_case"""
+def p_casos_match(p):
+    """casos_match : caso_match
+                   | casos_match caso_match"""
     if len(p) == 2:
         p[0] = [p[1]]
     else:
         p[0] = p[1] + [p[2]]
 
-def p_match_case(p):
-    """match_case : INTEGER FLECHA LLAVEIZQ statement_list LLAVEDER COMA
-                  | ID FLECHA LLAVEIZQ statement_list LLAVEDER COMA
-                  | NO ID FLECHA LLAVEIZQ statement_list LLAVEDER COMA"""
-    if len(p) == 7:
-        p[0] = ('case', p[1], p[4])
+def p_caso_match(p):
+    """caso_match : INTEGER FLECHA LLAVEIZQ lista_sentencias LLAVEDER COMA
+                  | ID FLECHA LLAVEIZQ lista_sentencias LLAVEDER COMA
+                  | NO ID FLECHA LLAVEIZQ lista_sentencias LLAVEDER COMA"""
+    if len(p) == 7 and p[1] != 'NO':
+        p[0] = ('caso', p[1], p[4])
     else:
-        p[0] = ('case', 'default', p[5])
+        p[0] = ('caso', 'default', p[5])
 
-def p_return_statement(p):
-    """return_statement : RETURN expression PUNTOCOMA
+def p_sentencia_return(p):
+    """sentencia_return : RETURN expresion PUNTOCOMA
                         | RETURN PUNTOCOMA"""
     if len(p) == 4:
         p[0] = ('return', p[2])
     else:
         p[0] = ('return', None)
 
-def p_break_statement(p):
-    """break_statement : BREAK PUNTOCOMA
+def p_sentencia_break(p):
+    """sentencia_break : BREAK PUNTOCOMA
                        | BREAK ID PUNTOCOMA"""
     if len(p) == 3:
         p[0] = ('break', None)
     else:
         p[0] = ('break', p[2])
 
-def p_continue_statement(p):
-    """continue_statement : CONTINUE PUNTOCOMA
+def p_sentencia_continue(p):
+    """sentencia_continue : CONTINUE PUNTOCOMA
                           | CONTINUE ID PUNTOCOMA"""
     if len(p) == 3:
         p[0] = ('continue', None)
     else:
         p[0] = ('continue', p[2])
 
-def p_expression_binary(p):
-    """expression : expression SUMA expression
-                  | expression RESTA expression
-                  | expression MULT expression
-                  | expression DIV expression
-                  | expression RESTO expression
-                  | expression IGUAL expression
-                  | expression DIFERENTE expression
-                  | expression MAYOR expression
-                  | expression MAYORIGUAL expression
-                  | expression MENOR expression
-                  | expression MENORIGUAL expression
-                  | expression Y expression
-                  | expression O expression"""
+def p_expresion_binaria(p):
+    """expresion : expresion SUMA expresion
+                 | expresion RESTA expresion
+                 | expresion MULT expresion
+                 | expresion DIV expresion
+                 | expresion RESTO expresion
+                 | expresion IGUAL expresion
+                 | expresion DIFERENTE expresion
+                 | expresion MAYOR expresion
+                 | expresion MAYORIGUAL expresion
+                 | expresion MENOR expresion
+                 | expresion MENORIGUAL expresion
+                 | expresion Y expresion
+                 | expresion O expresion"""
     p[0] = ('binop', p[2], p[1], p[3])
 
-def p_expression_unary(p):
-    """expression : NO expression
-                  | RESTA expression %prec NO"""
+def p_expresion_unaria(p):
+    """expresion : NO expresion
+                 | RESTA expresion"""
     p[0] = ('unop', p[1], p[2])
 
-def p_expression_literal(p):
-    """expression : INTEGER
-                  | FLOAT
-                  | STRING
-                  | TRUE
-                  | FALSE"""
+def p_expresion_literal(p):
+    """expresion : INTEGER
+                 | FLOAT
+                 | STRING
+                 | TRUE
+                 | FALSE"""
     if p[1] in [True, False]:
         p[0] = ('bool', p[1])
     elif isinstance(p[1], str):
@@ -210,28 +209,28 @@ def p_expression_literal(p):
     else:
         p[0] = ('literal', p[1])
 
-def p_expression_variable(p):
-    "expression : ID"
+def p_expresion_variable(p):
+    "expresion : ID"
     p[0] = ('var', p[1])
 
-def p_expression_call(p):
-    """expression : ID PARENIZQ arg_list PARENDER
-                  | PRINTLN PARENIZQ arg_list PARENDER
-                  | TYPEOF PARENIZQ arg_list PARENDER
-                  | RANDOM PARENIZQ arg_list PARENDER
-                  | LEN PARENIZQ arg_list PARENDER
-                  | CONTAINS PARENIZQ arg_list PARENDER
-                  | REPLACE PARENIZQ arg_list PARENDER
-                  | SPLIT PARENIZQ arg_list PARENDER
-                  | TO_UPPERCASE PARENIZQ arg_list PARENDER
-                  | TO_LOWERCASE PARENIZQ arg_list PARENDER
-                  | REVERSE PARENIZQ arg_list PARENDER"""
-    p[0] = ('call', p[1], p[3])
+def p_expresion_llamada(p):
+    """expresion : ID PARENIZQ lista_argumentos PARENDER
+                 | PRINTLN PARENIZQ lista_argumentos PARENDER
+                 | TYPEOF PARENIZQ lista_argumentos PARENDER
+                 | RANDOM PARENIZQ lista_argumentos PARENDER
+                 | LEN PARENIZQ lista_argumentos PARENDER
+                 | CONTAINS PARENIZQ lista_argumentos PARENDER
+                 | REPLACE PARENIZQ lista_argumentos PARENDER
+                 | SPLIT PARENIZQ lista_argumentos PARENDER
+                 | TO_UPPERCASE PARENIZQ lista_argumentos PARENDER
+                 | TO_LOWERCASE PARENIZQ lista_argumentos PARENDER
+                 | REVERSE PARENIZQ lista_argumentos PARENDER"""
+    p[0] = ('llamada', p[1], p[3])
 
-def p_arg_list(p):
-    """arg_list : 
-                | expression
-                | arg_list COMA expression"""
+def p_lista_argumentos(p):
+    """lista_argumentos : 
+                        | expresion
+                        | lista_argumentos COMA expresion"""
     if len(p) == 1:
         p[0] = []
     elif len(p) == 2:
@@ -239,21 +238,21 @@ def p_arg_list(p):
     else:
         p[0] = p[1] + [p[3]]
 
-def p_expression_group(p):
-    "expression : PARENIZQ expression PARENDER"
+def p_expresion_agrupada(p):
+    "expresion : PARENIZQ expresion PARENDER"
     p[0] = p[2]
 
 def p_error(p):
     if p:
-        parse_errors.append({
-            'line': p.lineno,
-            'message': f'Token inesperado: {p.value}'
+        errores_parseo.append({
+            'linea': p.lineno,
+            'mensaje': f'Token inesperado: {p.value}'
         })
 
 parser = yacc.yacc()
 
-def parse_code(code):
-    global parse_errors
-    parse_errors = []
-    result = parser.parse(code, lexer=lexer)
-    return result, parse_errors
+def parsear(codigo):
+    global errores_parseo
+    errores_parseo = []
+    resultado = parser.parse(codigo, lexer=lexer)
+    return resultado, errores_parseo

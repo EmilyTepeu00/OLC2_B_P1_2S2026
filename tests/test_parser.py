@@ -1,6 +1,6 @@
-from backend.parser import parse_code
+from backend.parser import parsear
 
-code = """
+codigo = """
 fn main() {
     let x: i32 = 10;
     let mut y = 20;
@@ -24,14 +24,14 @@ fn main() {
 }
 """
 
-ast, errors = parse_code(code)
+ast, errores = parsear(codigo)
 
 print("=== PRUEBA DEL PARSER ===\n")
 
-if errors:
+if errores:
     print("Errores:")
-    for e in errors:
-        print(f"  Linea {e['line']}: {e['message']}")
+    for e in errores:
+        print(f"  Linea {e['linea']}: {e['mensaje']}")
 else:
-    print("Parseo exitoso!")
+    print("Parseo exitoso")
     print(f"AST: {ast}")
