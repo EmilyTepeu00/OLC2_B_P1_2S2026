@@ -122,7 +122,7 @@ class Interprete:
         elif tipo == 'continue':
             return {'tipo': 'continue'}
         elif tipo == 'llamada':
-            self._ejecutar_llamada(sentencia)
+            return self._ejecutar_llamada(sentencia)
         elif tipo == 'binop':
             return self._ejecutar_binop(sentencia)
         elif tipo == 'unop':
@@ -272,24 +272,76 @@ class Interprete:
         nombre = nodo[1]
         argumentos = [self._ejecutar_expresion(arg) for arg in nodo[2]]
         
-        # Funciones embebidas
+        # FUNCIONES EMBEBIDAS
+
+        # Imprimir en consola
         if nombre == 'println':
             texto = ' '.join(str(arg) for arg in argumentos)
             self.salida.append(texto)
             return None
+
+        # Retornar el tipo de dato
         elif nombre == 'typeof':
             if argumentos:
                 return type(argumentos[0]).__name__
             return 'null'
+
+        # Retornar la longitud de un string/array
         elif nombre == 'len':
             if argumentos and isinstance(argumentos[0], (str, list)):
                 return len(argumentos[0])
             return 0
+
+        # Generar numero random
         elif nombre == 'random':
             import random
             if len(argumentos) >= 2:
                 return random.randint(argumentos[0], argumentos[1])
             return random.randint(0, 100)
+
+        # Verificar si un string tiene una subcadena
+        elif nombre == 'contains':
+            if len(argumentos) >= 2:
+                if isinstance(argumentos[0], str):
+                    return argumentos[1] in argumentos[0]
+                elif isinstance(argumentos[0], list):
+                    return argumentos[1] in argumentos[0]
+            return False
+
+        # Reemplazar una subcadena por otra en un string
+        elif nombre == 'replace':
+            if len(argumentos) >= 3:
+                if isinstance(argumentos[0], str):
+                    return argumentos[0].replace(argumentos[1], argumentos[2])
+            return argumentos[0] if argumentos else ''
+
+        # Dividir un string en partes con un separador
+        elif nombre == 'split':
+            if len(argumentos) >= 2:
+                if isinstance(argumentos[0], str):
+                    return argumentos[0].split(argumentos[1])
+            return [argumentos[0]] if argumentos else []
+
+        # Convertir a mayusculas
+        elif nombre == 'to_uppercase':
+            if argumentos and isinstance(argumentos[0], str):
+                return argumentos[0].upper()
+            return ''
+
+        # Convertir a minusculas
+        elif nombre == 'to_lowercase':
+            if argumentos and isinstance(argumentos[0], str):
+                return argumentos[0].lower()
+            return ''
+
+        # Invertir un string/lista
+        elif nombre == 'reverse':
+            if argumentos:
+                if isinstance(argumentos[0], str):
+                    return argumentos[0][::-1]
+                elif isinstance(argumentos[0], list):
+                    return argumentos[0][::-1]
+            return argumentos[0] if argumentos else []
         
         # Funciones definidas por el usuario
         return self._ejecutar_funcion(nombre, argumentos)

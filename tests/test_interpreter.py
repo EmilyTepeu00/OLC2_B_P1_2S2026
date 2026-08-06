@@ -4,18 +4,31 @@ from backend.interpreter import Interprete
 
 codigo = """
 fn main() {
-    let x: i32 = 10;
-    let mut y = 20;
-    let suma = x + y;
-    println(suma);
-    y = 30;
-    println(y);
+    let texto = "Hola Mundo desde Rust";
     
-    if suma > 15 {
-        println("suma es mayor que 15");
-    } else {
-        println("suma es menor o igual que 15");
-    }
+    // contains
+    let contiene = contains(texto, "Mundo");
+    println(contiene);
+    
+    // replace
+    let nuevo = replace(texto, "Rust", "Compiladores");
+    println(nuevo);
+    
+    // split
+    let partes = split(texto, " ");
+    println(partes);
+    
+    // to_uppercase
+    let mayus = to_uppercase(texto);
+    println(mayus);
+    
+    // to_lowercase
+    let minus = to_lowercase(texto);
+    println(minus);
+    
+    // reverse (string)
+    let invertido = reverse(texto);
+    println(invertido);
 }
 """
 
