@@ -396,4 +396,27 @@ class Interprete:
     def _ejecutar_expresion(self, expr):
         if isinstance(expr, (int, float, str, bool)):
             return expr
+        if isinstance(expr, list):
+            return [self._ejecutar_expresion(e) for e in expr]
+
+        if expr[0] == 'array_literal':
+            return [self._ejecutar_expresion(e) for e in expr[1]]
+        elif expr[0] == 'array_repeat':
+            valor = self._ejecutar_expresion(expr[1])
+            count = expr[2]
+            return [valor] * count
+        elif expr[0] == 'array_access':
+            arreglo = self._ejecutar_expresion(expr[1])
+            indice = self._ejecutar_expresion(expr[2])
+            if not isinstance(indice, int):
+                raise Exception("Indice debe ser un entero")
+            if indice < 0 or indice >= len(arreglo):
+                raise Exception("Indice fuera de rango")
+            return arreglo[indice]
+        elif expr[0] == 'array_slice':
+            arreglo = self._ejecutar_expresion(expr[1])
+            start = self._ejecutar_expresion(expr[2])
+            end = self._ejecutar_expresion(expr[3])
+            return arreglo[start:end]
+
         return self._ejecutar_sentencia(expr)

@@ -45,6 +45,7 @@ tokens = [
     'Y', 'O', 'NO',
     'PARENIZQ', 'PARENDER', 'LLAVEIZQ', 'LLAVEDER', 'CORCHIZQ', 'CORCHDER',
     'PUNTOCOMA', 'DOSPUNTOS', 'COMA', 'PUNTO', 'FLECHA', 'RANGO',
+    'AMPERSAND',
 ] + list(reserved.values())
 
 # TOKENS SIMPLES
@@ -79,6 +80,7 @@ t_COMA = r','
 t_PUNTO = r'\.'
 t_FLECHA = r'->'
 t_RANGO = r'\.\.'
+t_AMPERSAND = r'&'
 
 t_ignore = ' \t'
 

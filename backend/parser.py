@@ -56,8 +56,12 @@ def p_tipo(p):
             | BOOL
             | STRING_TYPE
             | CHAR
+            | CORCHIZQ tipo PUNTOCOMA INTEGER CORCHDER
             | ID"""
-    p[0] = p[1]
+    if len(p) == 6:  # [T; N]
+        p[0] = ('array', p[2], p[4])
+    else:
+        p[0] = p[1]
 
 def p_lista_sentencias(p):
     """lista_sentencias : 
@@ -241,6 +245,35 @@ def p_lista_argumentos(p):
 def p_expresion_agrupada(p):
     "expresion : PARENIZQ expresion PARENDER"
     p[0] = p[2]
+
+# --- ARREGLOS ---
+
+def p_expresion_array_literal(p):
+    """expresion : CORCHIZQ lista_elementos CORCHDER"""
+    p[0] = ('array_literal', p[2])
+
+def p_expresion_array_repetido(p):
+    """expresion : CORCHIZQ expresion PUNTOCOMA INTEGER CORCHDER"""
+    p[0] = ('array_repeat', p[2], p[4])
+
+def p_lista_elementos(p):
+    """lista_elementos : 
+                      | expresion
+                      | lista_elementos COMA expresion"""
+    if len(p) == 1:
+        p[0] = []
+    elif len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1] + [p[3]]
+
+def p_expresion_array_access(p):
+    """expresion : expresion CORCHIZQ expresion CORCHDER"""
+    p[0] = ('array_access', p[1], p[3])
+
+def p_expresion_array_slice(p):
+    """expresion : AMPERSAND expresion CORCHIZQ expresion RANGO expresion CORCHDER"""
+    p[0] = ('array_slice', p[2], p[4], p[6])
 
 def p_error(p):
     if p:
