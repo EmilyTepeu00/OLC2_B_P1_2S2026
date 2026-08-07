@@ -5,6 +5,7 @@ class Entorno:
         self.variables = {}
         self.padre = padre
         self.etiquetas = {}  # Para loops con etiquetas
+        self.structs = {}
     
     def declarar(self, nombre, valor, mutable=False):
         self.variables[nombre] = {
@@ -40,6 +41,16 @@ class Entorno:
     def crear_hijo(self):
         return Entorno(self)
 
+    def declarar_struct(self, nombre, campos):
+        self.structs[nombre] = campos
+
+    def obtener_struct(self, nombre):
+        if nombre in self.structs:
+            return self.structs[nombre]
+        if self.padre:
+            return self.padre.obtener_struct(nombre)
+        raise Exception(f"Struct no definido: {nombre}")
+
 class Interprete:
     def __init__(self):
         self.entorno_global = Entorno()
@@ -52,22 +63,24 @@ class Interprete:
         self.salida = []
         self.errores = []
         programa = ast
-        
-        # Registrar todas las funciones
-        for funcion in programa[1]:
-            if funcion[0] == 'funcion':
-                self.funciones[funcion[1]] = funcion
-        
+
+        # Registrar todas las funciones y structs
+        for declaracion in programa[1]:
+            if declaracion[0] == 'funcion':
+                self.funciones[declaracion[1]] = declaracion
+            elif declaracion[0] == 'struct':
+                self.entorno_global.declarar_struct(declaracion[1], declaracion[2])
+
         # Buscar y ejecutar main
         if 'main' not in self.funciones:
             self.errores.append("Error: No se encontró la funcion main")
-            return
+            return self.salida, self.errores
         
         try:
             self._ejecutar_funcion('main', [])
         except Exception as e:
             self.errores.append(str(e))
-        
+
         return self.salida, self.errores
     
     def _ejecutar_funcion(self, nombre, argumentos):
@@ -117,6 +130,8 @@ class Interprete:
             return self._ejecutar_loop(sentencia)
         elif tipo == 'return':
             return self._ejecutar_return(sentencia)
+        elif tipo == 'struct':
+            return self._ejecutar_struct(sentencia)
         elif tipo == 'break':
             return {'tipo': 'break'}
         elif tipo == 'continue':
@@ -267,6 +282,12 @@ class Interprete:
             valor_ejecutado = self._ejecutar_expresion(valor)
             return {'tipo': 'return', 'valor': valor_ejecutado}
         return {'tipo': 'return', 'valor': None}
+
+    def _ejecutar_struct(self, nodo):
+            nombre = nodo[1]
+            campos = nodo[2]
+            self.entorno_actual.declarar_struct(nombre, campos)
+            return None
     
     def _ejecutar_llamada(self, nodo):
         nombre = nodo[1]
@@ -418,5 +439,23 @@ class Interprete:
             start = self._ejecutar_expresion(expr[2])
             end = self._ejecutar_expresion(expr[3])
             return arreglo[start:end]
+        elif expr[0] == 'struct_init':
+            nombre = expr[1]
+            valores = expr[2]
+            struct_def = self.entorno_actual.obtener_struct(nombre)
+            struct_obj = {}
+            for campo, valor in valores:
+                struct_obj[campo] = self._ejecutar_expresion(valor)
+            # Verificar campos faltantes
+            for campo, _ in struct_def:
+                if campo not in struct_obj:
+                    raise Exception(f"Campo faltante en struct {nombre}: {campo}")
+            return struct_obj
+        elif expr[0] == 'field_access':
+            struct_obj = self._ejecutar_expresion(expr[1])
+            campo = expr[2]
+            if campo not in struct_obj:
+                raise Exception(f"Campo no existe: {campo}")
+            return struct_obj[campo]
 
         return self._ejecutar_sentencia(expr)

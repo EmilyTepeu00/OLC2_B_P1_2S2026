@@ -13,16 +13,21 @@ precedencia = (
 )
 
 def p_programa(p):
-    "programa : lista_funciones"
+    """programa : lista_declaraciones"""
     p[0] = ('programa', p[1])
 
-def p_lista_funciones(p):
-    """lista_funciones : funcion
-                       | lista_funciones funcion"""
+def p_lista_declaraciones(p):
+    """lista_declaraciones : declaracion
+                           | lista_declaraciones declaracion"""
     if len(p) == 2:
         p[0] = [p[1]]
     else:
         p[0] = p[1] + [p[2]]
+
+def p_declaracion(p):
+    """declaracion : funcion
+                   | struct_decl"""
+    p[0] = p[1]
 
 def p_funcion(p):
     """funcion : FN ID PARENIZQ lista_parametros PARENDER FLECHA tipo LLAVEIZQ lista_sentencias LLAVEDER
@@ -58,7 +63,7 @@ def p_tipo(p):
             | CHAR
             | CORCHIZQ tipo PUNTOCOMA INTEGER CORCHDER
             | ID"""
-    if len(p) == 6:  # [T; N]
+    if len(p) == 6:  # [T; N
         p[0] = ('array', p[2], p[4])
     else:
         p[0] = p[1]
@@ -213,6 +218,10 @@ def p_expresion_literal(p):
     else:
         p[0] = ('literal', p[1])
 
+def p_expresion_struct_init(p):
+    """expresion : ID LLAVEIZQ valores_struct LLAVEDER"""
+    p[0] = ('struct_init', p[1], p[3])
+
 def p_expresion_variable(p):
     "expresion : ID"
     p[0] = ('var', p[1])
@@ -267,6 +276,8 @@ def p_lista_elementos(p):
     else:
         p[0] = p[1] + [p[3]]
 
+# --- ARRAYS ---
+
 def p_expresion_array_access(p):
     """expresion : expresion CORCHIZQ expresion CORCHDER"""
     p[0] = ('array_access', p[1], p[3])
@@ -274,6 +285,40 @@ def p_expresion_array_access(p):
 def p_expresion_array_slice(p):
     """expresion : AMPERSAND expresion CORCHIZQ expresion RANGO expresion CORCHDER"""
     p[0] = ('array_slice', p[2], p[4], p[6])
+
+# --- STRUCTS ---
+
+def p_struct_decl(p):
+    """struct_decl : STRUCT ID LLAVEIZQ campos_struct LLAVEDER"""
+    p[0] = ('struct', p[2], p[4])
+
+def p_campos_struct(p):
+    """campos_struct : campo_struct
+                     | campo_struct COMA campos_struct"""
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = [p[1]] + p[3]
+
+def p_campo_struct(p):
+    """campo_struct : ID DOSPUNTOS tipo"""
+    p[0] = (p[1], p[3])
+
+def p_valores_struct(p):
+    """valores_struct : valor_struct
+                      | valores_struct COMA valor_struct"""
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1] + [p[3]]
+
+def p_valor_struct(p):
+    """valor_struct : ID DOSPUNTOS expresion"""
+    p[0] = (p[1], p[3])
+
+def p_expresion_field_access(p):
+    """expresion : expresion PUNTO ID"""
+    p[0] = ('field_access', p[1], p[3])
 
 def p_error(p):
     if p:

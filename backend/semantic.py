@@ -59,12 +59,12 @@ class AnalizadorSemantico:
     def _registrar_funcion(self, nodo_funcion):
         nombre = nodo_funcion[1]
         parametros = nodo_funcion[2]
-        tipo_retorno = nodo_funcion[3]
-        
+        tipo_retorno = nodo_funcion[3] if len(nodo_funcion) > 3 else None
+
         simbolo = Simbolo(nombre, 'funcion', tipo_retorno)
         simbolo.parametros = parametros
         simbolo.tipo_retorno = tipo_retorno
-        
+
         ok, error = self.tabla_global.agregar(nombre, simbolo)
         if not ok:
             self.errores.append({
@@ -76,12 +76,12 @@ class AnalizadorSemantico:
     def _analizar_funcion(self, nodo_funcion):
         nombre = nodo_funcion[1]
         parametros = nodo_funcion[2]
-        tipo_retorno = nodo_funcion[3]
+        tipo_retorno = nodo_funcion[3] if len(nodo_funcion) > 3 else None
         cuerpo = nodo_funcion[4] if len(nodo_funcion) > 4 else []
-        
+
         # Crear ambito para la funcion
         self.tabla_actual = TablaSimbolos(self.tabla_global)
-        
+
         # Registrar parametros como variables
         for nom_param, tipo_param in parametros:
             simbolo = Simbolo(nom_param, 'variable', tipo_param, True)
