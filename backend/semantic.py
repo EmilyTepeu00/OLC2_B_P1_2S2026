@@ -80,7 +80,9 @@ class AnalizadorSemantico:
         cuerpo = nodo_funcion[4] if len(nodo_funcion) > 4 else []
 
         # Crear ambito para la funcion
-        self.tabla_actual = TablaSimbolos(self.tabla_global)
+        nueva_tabla = TablaSimbolos(self.tabla_global)
+        self.tabla_global.hijos.append(nueva_tabla)
+        self.tabla_actual = nueva_tabla
 
         # Registrar parametros como variables
         for nom_param, tipo_param in parametros:

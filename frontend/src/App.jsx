@@ -49,7 +49,7 @@ export default function App() {
   ])
   const [isRunning, setIsRunning] = useState(false)
   const [reportTab, setReportTab] = useState('errors')
-  const [result, setResult] = useState({ errors: [], symbols: [], ast: [] })
+  const [result, setResult] = useState({ errors: [], symbols: [], ast: [], ast_image: '' })
 
   const textareaRef = useRef(null)
   const gutterRef = useRef(null)
@@ -133,6 +133,7 @@ export default function App() {
 
   const handleEjecutar = async () => {
     setIsRunning(true)
+    setConsoleLines([])
     appendConsole('info', '> Ejecutando OxigenScript...')
 
     try {
@@ -148,6 +149,7 @@ export default function App() {
         errors: data.errores ?? [],
         symbols: data.symbols ?? [],
         ast: data.ast ?? [],
+        ast_image: data.ast_image || '',
       })
 
       if ((data.errores ?? []).length === 0) {
@@ -272,7 +274,7 @@ export default function App() {
             <div className="reports__body">
               {reportTab === 'errors' && (
                 result.errors.length === 0 ? (
-                  <EmptyState text="Aqui se mostraran los errores lexicos, sintacticos o semanticos del programa." />
+                  <EmptyState text="No se encontraron errores, el programa compilo con exito." />
                 ) : (
                   <table className="report-table">
                     <thead>
@@ -282,10 +284,10 @@ export default function App() {
                       {result.errors.map((e, i) => (
                         <tr key={i}>
                           <td>{i + 1}</td>
-                          <td><span className={`tag tag--${e.tipo?.toLowerCase()}`}>{e.tipo}</span></td>
-                          <td>{e.mensaje}</td>
-                          <td>{e.linea}</td>
-                          <td>{e.columna}</td>
+                          <td><span className={`tag tag--${e.tipo?.toLowerCase()}`}>{e.tipo || 'Error'}</span></td>
+                          <td>{e.mensaje || e.descripcion || e}</td>
+                          <td>{e.linea || '—'}</td>
+                          <td>{e.columna || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -304,7 +306,7 @@ export default function App() {
                     <tbody>
                       {result.symbols.map((s, i) => (
                         <tr key={i}>
-                          <td>{i + 1}</td>
+                          <td>{s.no || i + 1}</td>
                           <td className="mono">{s.nombre}</td>
                           <td>{s.categoria}</td>
                           <td className="mono">{s.tipo}</td>
@@ -319,9 +321,15 @@ export default function App() {
               )}
 
               {reportTab === 'ast' && (
-                result.ast.length === 0 ? (
-                  <EmptyState text="Aqui se mostrara el arbol de sintaxis abstracta del programa." />
-                ) : (
+                result.ast_image ? (
+                  <div style={{ padding: '20px', textAlign: 'center' }}>
+                    <img 
+                      src={`data:image/png;base64,${result.ast_image}`} 
+                      alt="Árbol de Sintaxis Abstracta"
+                      style={{ maxWidth: '100%', height: 'auto' }}
+                    />
+                  </div>
+                ) : result.ast.length > 0 ? (
                   <div className="ast-tree">
                     {result.ast.map((node, i) => (
                       <div key={i} className="ast-tree__node" style={{ paddingLeft: `${node.depth * 20}px` }}>
@@ -330,6 +338,8 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <EmptyState text="El arbol de sintaxis abstracta" />
                 )
               )}
             </div>
