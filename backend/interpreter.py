@@ -1,4 +1,6 @@
-# INTERPRETE
+# --- INTERPRETE ---
+
+import re
 
 class Entorno:
     def __init__(self, padre=None):
@@ -106,7 +108,7 @@ class Interprete:
         resultado = None
         for sentencia in cuerpo:
             resultado = self._ejecutar_sentencia(sentencia)
-            if resultado is not None and resultado.get('tipo') == 'return':
+            if isinstance(resultado, dict) and resultado.get('tipo') == 'return':
                 # Restaurar entorno y retornar valor
                 self.entorno_actual = entorno_anterior
                 return resultado['valor']
@@ -133,9 +135,11 @@ class Interprete:
         elif tipo == 'struct':
             return self._ejecutar_struct(sentencia)
         elif tipo == 'break':
-            return {'tipo': 'break'}
+            return {'tipo': 'break', 'etiqueta': sentencia[1]}
         elif tipo == 'continue':
-            return {'tipo': 'continue'}
+            return {'tipo': 'continue', 'etiqueta': sentencia[1]}
+        elif tipo == 'match':
+            return self._ejecutar_match(sentencia)
         elif tipo == 'llamada':
             return self._ejecutar_llamada(sentencia)
         elif tipo == 'binop':
@@ -187,7 +191,7 @@ class Interprete:
             
             for sentencia in cuerpo_entonces:
                 resultado = self._ejecutar_sentencia(sentencia)
-                if resultado is not None:
+                if isinstance(resultado, dict):
                     if resultado.get('tipo') == 'return':
                         self.entorno_actual = entorno_anterior
                         return resultado
@@ -203,7 +207,7 @@ class Interprete:
             if isinstance(cuerpo_sino, list):
                 for sentencia in cuerpo_sino:
                     resultado = self._ejecutar_sentencia(sentencia)
-                    if resultado is not None:
+                    if isinstance(resultado, dict):
                         if resultado.get('tipo') == 'return':
                             self.entorno_actual = entorno_anterior
                             return resultado
@@ -212,7 +216,7 @@ class Interprete:
                             return resultado
             else:
                 resultado = self._ejecutar_sentencia(cuerpo_sino)
-                if resultado is not None:
+                if isinstance(resultado, dict):
                     if resultado.get('tipo') == 'return':
                         self.entorno_actual = entorno_anterior
                         return resultado
@@ -236,20 +240,30 @@ class Interprete:
             entorno_anterior = self.entorno_actual
             self.entorno_actual = Entorno(self.entorno_actual)
             
+            interrumpir_while = False
             for sentencia in cuerpo:
                 resultado = self._ejecutar_sentencia(sentencia)
-                if resultado is not None:
+                if isinstance(resultado, dict):
                     if resultado.get('tipo') == 'return':
                         self.entorno_actual = entorno_anterior
                         return resultado
                     elif resultado.get('tipo') == 'break':
                         self.entorno_actual = entorno_anterior
-                        return None
+                        # Si el break trae una etiqueta no es para este while, hay que burbujearlo al loop externo correspondiente
+                        etiqueta = resultado.get('etiqueta')
+                        return None if etiqueta is None else resultado
                     elif resultado.get('tipo') == 'continue':
-                        self.entorno_actual = entorno_anterior
-                        break
+                        etiqueta = resultado.get('etiqueta')
+                        if etiqueta is None:
+                            interrumpir_while = True
+                            break
+                        else:
+                            self.entorno_actual = entorno_anterior
+                            return resultado
             
             self.entorno_actual = entorno_anterior
+            if interrumpir_while:
+                continue
         
         return None
     
@@ -261,20 +275,62 @@ class Interprete:
             entorno_anterior = self.entorno_actual
             self.entorno_actual = Entorno(self.entorno_actual)
             
+            continuar_loop = False
             for sentencia in cuerpo:
                 resultado = self._ejecutar_sentencia(sentencia)
-                if resultado is not None:
+                if isinstance(resultado, dict):
                     if resultado.get('tipo') == 'return':
                         self.entorno_actual = entorno_anterior
                         return resultado
                     elif resultado.get('tipo') == 'break':
                         self.entorno_actual = entorno_anterior
-                        return None
+                        etiqueta_break = resultado.get('etiqueta')
+                        # Si no trae etiqueta o la etiqueta es la de este loop, se detiene aqui
+                        # Si trae otra etiqueta, se burbujea hacia arriba
+                        if etiqueta_break is None or etiqueta_break == etiqueta:
+                            return None
+                        return resultado
                     elif resultado.get('tipo') == 'continue':
-                        self.entorno_actual = entorno_anterior
-                        break
+                        etiqueta_continue = resultado.get('etiqueta')
+                        if etiqueta_continue is None or etiqueta_continue == etiqueta:
+                            continuar_loop = True
+                            break
+                        else:
+                            self.entorno_actual = entorno_anterior
+                            return resultado
             
             self.entorno_actual = entorno_anterior
+    
+    def _ejecutar_match(self, nodo):
+        valor = self._ejecutar_expresion(nodo[1])
+        casos = nodo[2]
+        
+        cuerpo_a_ejecutar = None
+        cuerpo_default = None
+        for caso in casos:
+            patron, cuerpo = caso[1], caso[2]
+            if patron == 'default':
+                cuerpo_default = cuerpo
+                continue
+            if patron == valor:
+                cuerpo_a_ejecutar = cuerpo
+                break
+        
+        if cuerpo_a_ejecutar is None:
+            cuerpo_a_ejecutar = cuerpo_default
+        if cuerpo_a_ejecutar is None:
+            return None
+        
+        entorno_anterior = self.entorno_actual
+        self.entorno_actual = Entorno(self.entorno_actual)
+        resultado_final = None
+        for sentencia in cuerpo_a_ejecutar:
+            resultado = self._ejecutar_sentencia(sentencia)
+            if isinstance(resultado, dict) and resultado.get('tipo') in ('return', 'break', 'continue'):
+                resultado_final = resultado
+                break
+        self.entorno_actual = entorno_anterior
+        return resultado_final
     
     def _ejecutar_return(self, nodo):
         valor = nodo[1]
@@ -289,6 +345,31 @@ class Interprete:
             self.entorno_actual.declarar_struct(nombre, campos)
             return None
     
+    def _formatear_valor(self, valor):
+        # Formatea un valor como Rust lo mostraria con {} (o {:?}) y los booleanos van en minuscula true/false
+        if isinstance(valor, bool):
+            return 'true' if valor else 'false'
+        if isinstance(valor, list):
+            return '[' + ', '.join(self._formatear_valor(v) for v in valor) + ']'
+        if valor is None:
+            return 'None'
+        return str(valor)
+
+    def _formatear_println(self, argumentos):
+        # Sustituye los marcadores {} y {:?} del primer argumento por los valores siguientes en orden
+        if argumentos and isinstance(argumentos[0], str) and re.search(r'\{(:\?)?\}', argumentos[0]):
+            formato = argumentos[0]
+            resto = list(argumentos[1:])
+
+            def reemplazar(_match):
+                if resto:
+                    return self._formatear_valor(resto.pop(0))
+                return _match.group(0)
+
+            return re.sub(r'\{(:\?)?\}', reemplazar, formato)
+        # Sin marcadores {}: se imprimen los argumentos separados por espacio
+        return ' '.join(self._formatear_valor(arg) for arg in argumentos)
+
     def _ejecutar_llamada(self, nodo):
         nombre = nodo[1]
         argumentos = [self._ejecutar_expresion(arg) for arg in nodo[2]]
@@ -297,8 +378,7 @@ class Interprete:
 
         # Imprimir en consola
         if nombre == 'println':
-            texto = ' '.join(str(arg) for arg in argumentos)
-            self.salida.append(texto)
+            self.salida.append(self._formatear_println(argumentos))
             return None
 
         # Retornar el tipo de dato
@@ -361,7 +441,9 @@ class Interprete:
                 if isinstance(argumentos[0], str):
                     return argumentos[0][::-1]
                 elif isinstance(argumentos[0], list):
-                    return argumentos[0][::-1]
+                    # Los arreglos son mutables y se invierten en su lugar
+                    argumentos[0].reverse()
+                    return argumentos[0]
             return argumentos[0] if argumentos else []
         
         # Funciones definidas por el usuario
@@ -419,14 +501,21 @@ class Interprete:
             return expr
         if isinstance(expr, list):
             return [self._ejecutar_expresion(e) for e in expr]
-
-        if expr[0] == 'array_literal':
+    
+        tipo = expr[0]
+    
+        if tipo == 'var':
+            return self.entorno_actual.obtener(expr[1])
+        elif tipo == 'string_from':
+            # String::from(x) convierte x a texto (String::new() y llega como ('string', '') desde el parser)
+            return str(self._ejecutar_expresion(expr[1]))
+        elif tipo == 'array_literal':
             return [self._ejecutar_expresion(e) for e in expr[1]]
-        elif expr[0] == 'array_repeat':
+        elif tipo == 'array_repeat':
             valor = self._ejecutar_expresion(expr[1])
             count = expr[2]
             return [valor] * count
-        elif expr[0] == 'array_access':
+        elif tipo == 'array_access':
             arreglo = self._ejecutar_expresion(expr[1])
             indice = self._ejecutar_expresion(expr[2])
             if not isinstance(indice, int):
@@ -434,12 +523,12 @@ class Interprete:
             if indice < 0 or indice >= len(arreglo):
                 raise Exception("Indice fuera de rango")
             return arreglo[indice]
-        elif expr[0] == 'array_slice':
+        elif tipo == 'array_slice':
             arreglo = self._ejecutar_expresion(expr[1])
             start = self._ejecutar_expresion(expr[2])
             end = self._ejecutar_expresion(expr[3])
             return arreglo[start:end]
-        elif expr[0] == 'struct_init':
+        elif tipo == 'struct_init':
             nombre = expr[1]
             valores = expr[2]
             struct_def = self.entorno_actual.obtener_struct(nombre)
@@ -451,11 +540,13 @@ class Interprete:
                 if campo not in struct_obj:
                     raise Exception(f"Campo faltante en struct {nombre}: {campo}")
             return struct_obj
-        elif expr[0] == 'field_access':
+        elif tipo == 'field_access':
             struct_obj = self._ejecutar_expresion(expr[1])
             campo = expr[2]
             if campo not in struct_obj:
                 raise Exception(f"Campo no existe: {campo}")
             return struct_obj[campo]
-
+        elif tipo == 'llamada':
+            return self._ejecutar_llamada(expr)
+    
         return self._ejecutar_sentencia(expr)

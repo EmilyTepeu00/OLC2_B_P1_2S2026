@@ -31,14 +31,11 @@ def p_declaracion(p):
 
 def p_funcion(p):
     """funcion : FN ID PARENIZQ lista_parametros PARENDER FLECHA tipo LLAVEIZQ lista_sentencias LLAVEDER
-               | FN ID PARENIZQ lista_parametros PARENDER LLAVEIZQ lista_sentencias LLAVEDER
-               | FN MAIN PARENIZQ lista_parametros PARENDER LLAVEIZQ lista_sentencias LLAVEDER"""
+               | FN ID PARENIZQ lista_parametros PARENDER LLAVEIZQ lista_sentencias LLAVEDER"""
     if len(p) == 11:
         p[0] = ('funcion', p[2], p[4], p[7], p[9])
-    elif len(p) == 10 and p[2] != 'main':
-        p[0] = ('funcion', p[2], p[4], None, p[7])
     else:
-        p[0] = ('funcion', 'main', p[4], None, p[7])
+        p[0] = ('funcion', p[2], p[4], None, p[7])
 
 def p_lista_parametros(p):
     """lista_parametros : 
@@ -113,35 +110,57 @@ def p_declaracion_let(p):
         p[0] = ('let', p[3], p[5], None, True)
 
 def p_asignacion(p):
-    "asignacion : ID ASIGN expresion PUNTOCOMA"
-    p[0] = ('asignar', p[1], p[3])
+    """asignacion : ID ASIGN expresion PUNTOCOMA
+                  | ID MASIGUAL expresion PUNTOCOMA
+                  | ID MENOSIGUAL expresion PUNTOCOMA
+                  | ID MULTIGUAL expresion PUNTOCOMA
+                  | ID DIVIGUAL expresion PUNTOCOMA
+                  | ID RESTOIGUAL expresion PUNTOCOMA"""
+    tipo_token = p.slice[2].type
+    if tipo_token == 'ASIGN':
+        p[0] = ('asignar', p[1], p[3])
+    else:
+        # x += e  se traduce a  x = x + e  (igual con -=, *=, /=, %=)
+        operador = {
+            'MASIGUAL': '+', 'MENOSIGUAL': '-',
+            'MULTIGUAL': '*', 'DIVIGUAL': '/', 'RESTOIGUAL': '%',
+        }[tipo_token]
+        p[0] = ('asignar', p[1], ('binop', operador, ('var', p[1]), p[3]))
 
 def p_sentencia_if(p):
     """sentencia_if : IF expresion LLAVEIZQ lista_sentencias LLAVEDER
                     | IF expresion LLAVEIZQ lista_sentencias LLAVEDER ELSE LLAVEIZQ lista_sentencias LLAVEDER
-                    | IF expresion LLAVEIZQ lista_sentencias LLAVEDER ELSE sentencia_if"""
+                    | IF expresion LLAVEIZQ lista_sentencias LLAVEDER ELSE sentencia_if
+                    | IF ID LLAVEIZQ lista_sentencias LLAVEDER
+                    | IF ID LLAVEIZQ lista_sentencias LLAVEDER ELSE LLAVEIZQ lista_sentencias LLAVEDER
+                    | IF ID LLAVEIZQ lista_sentencias LLAVEDER ELSE sentencia_if"""
+    condicion = ('var', p[2]) if p.slice[2].type == 'ID' else p[2]
     if len(p) == 6:
-        p[0] = ('if', p[2], p[4], None)
+        p[0] = ('if', condicion, p[4], None)
     elif len(p) == 10:
-        p[0] = ('if', p[2], p[5], p[8])
+        p[0] = ('if', condicion, p[4], p[8])
     else:
-        p[0] = ('if', p[2], p[5], p[7])
+        p[0] = ('if', condicion, p[4], p[7])
 
 def p_sentencia_while(p):
-    "sentencia_while : WHILE expresion LLAVEIZQ lista_sentencias LLAVEDER"
-    p[0] = ('while', p[2], p[4])
+    """sentencia_while : WHILE expresion LLAVEIZQ lista_sentencias LLAVEDER
+                       | WHILE ID LLAVEIZQ lista_sentencias LLAVEDER"""
+    condicion = ('var', p[2]) if p.slice[2].type == 'ID' else p[2]
+    p[0] = ('while', condicion, p[4])
 
 def p_sentencia_loop(p):
     """sentencia_loop : LOOP LLAVEIZQ lista_sentencias LLAVEDER
-                      | ID DOSPUNTOS LOOP LLAVEIZQ lista_sentencias LLAVEDER"""
+                      | LABEL DOSPUNTOS LOOP LLAVEIZQ lista_sentencias LLAVEDER"""
     if len(p) == 5:
         p[0] = ('loop', None, p[3])
     else:
         p[0] = ('loop', p[1], p[5])
 
 def p_sentencia_match(p):
-    "sentencia_match : MATCH expresion LLAVEIZQ casos_match LLAVEDER"
-    p[0] = ('match', p[2], p[4])
+    """sentencia_match : MATCH expresion LLAVEIZQ casos_match LLAVEDER
+                       | MATCH ID LLAVEIZQ casos_match LLAVEDER"""
+    condicion = ('var', p[2]) if p.slice[2].type == 'ID' else p[2]
+    p[0] = ('match', condicion, p[4])
 
 def p_casos_match(p):
     """casos_match : caso_match
@@ -152,13 +171,18 @@ def p_casos_match(p):
         p[0] = p[1] + [p[2]]
 
 def p_caso_match(p):
-    """caso_match : INTEGER FLECHA LLAVEIZQ lista_sentencias LLAVEDER COMA
-                  | ID FLECHA LLAVEIZQ lista_sentencias LLAVEDER COMA
-                  | NO ID FLECHA LLAVEIZQ lista_sentencias LLAVEDER COMA"""
-    if len(p) == 7 and p[1] != 'NO':
-        p[0] = ('caso', p[1], p[4])
+    """caso_match : INTEGER FLECHA_GORDA expresion COMA
+                  | ID FLECHA_GORDA expresion COMA
+                  | INTEGER FLECHA_GORDA LLAVEIZQ lista_sentencias LLAVEDER COMA
+                  | ID FLECHA_GORDA LLAVEIZQ lista_sentencias LLAVEDER COMA"""
+    # Se soporta las dos formas: "patron => expresion"
+    patron = p[1]
+    cuerpo = [p[3]] if len(p) == 5 else p[4]
+    # "_" se tokeniza como ID normal (empieza con "_"), se compara el valor
+    if patron == '_':
+        p[0] = ('caso', 'default', cuerpo)
     else:
-        p[0] = ('caso', 'default', p[5])
+        p[0] = ('caso', patron, cuerpo)
 
 def p_sentencia_return(p):
     """sentencia_return : RETURN expresion PUNTOCOMA
@@ -170,7 +194,7 @@ def p_sentencia_return(p):
 
 def p_sentencia_break(p):
     """sentencia_break : BREAK PUNTOCOMA
-                       | BREAK ID PUNTOCOMA"""
+                       | BREAK LABEL PUNTOCOMA"""
     if len(p) == 3:
         p[0] = ('break', None)
     else:
@@ -178,7 +202,7 @@ def p_sentencia_break(p):
 
 def p_sentencia_continue(p):
     """sentencia_continue : CONTINUE PUNTOCOMA
-                          | CONTINUE ID PUNTOCOMA"""
+                          | CONTINUE LABEL PUNTOCOMA"""
     if len(p) == 3:
         p[0] = ('continue', None)
     else:
@@ -211,9 +235,10 @@ def p_expresion_literal(p):
                  | STRING
                  | TRUE
                  | FALSE"""
-    if p[1] in [True, False]:
+    tipo_token = p.slice[1].type
+    if tipo_token in ('TRUE', 'FALSE'):
         p[0] = ('bool', p[1])
-    elif isinstance(p[1], str):
+    elif tipo_token == 'STRING':
         p[0] = ('string', p[1])
     else:
         p[0] = ('literal', p[1])
@@ -228,17 +253,24 @@ def p_expresion_variable(p):
 
 def p_expresion_llamada(p):
     """expresion : ID PARENIZQ lista_argumentos PARENDER
-                 | PRINTLN PARENIZQ lista_argumentos PARENDER
-                 | TYPEOF PARENIZQ lista_argumentos PARENDER
-                 | RANDOM PARENIZQ lista_argumentos PARENDER
-                 | LEN PARENIZQ lista_argumentos PARENDER
-                 | CONTAINS PARENIZQ lista_argumentos PARENDER
-                 | REPLACE PARENIZQ lista_argumentos PARENDER
-                 | SPLIT PARENIZQ lista_argumentos PARENDER
-                 | TO_UPPERCASE PARENIZQ lista_argumentos PARENDER
-                 | TO_LOWERCASE PARENIZQ lista_argumentos PARENDER
-                 | REVERSE PARENIZQ lista_argumentos PARENDER"""
-    p[0] = ('llamada', p[1], p[3])
+                 | PRINTLN NO PARENIZQ lista_argumentos PARENDER"""
+    if p.slice[1].type == 'PRINTLN':
+        p[0] = ('llamada', 'println', p[4])
+    else:
+        p[0] = ('llamada', p[1], p[3])
+
+def p_expresion_llamada_metodo(p):
+    """expresion : expresion PUNTO ID PARENIZQ lista_argumentos PARENDER"""
+    # variable.metodo(args) se traduce a llamada(metodo, [variable] + args)
+    p[0] = ('llamada', p[3], [p[1]] + p[5])
+
+def p_expresion_string_estatico(p):
+    """expresion : STRING_TYPE DOSDOSPUNTOS ID PARENIZQ lista_argumentos PARENDER"""
+    # String::from("texto")  y  String::new()
+    if p[3] == 'from':
+        p[0] = ('string_from', p[5][0] if p[5] else ('string', ''))
+    else:  # String::new()
+        p[0] = ('string', '')
 
 def p_lista_argumentos(p):
     """lista_argumentos : 
@@ -294,14 +326,16 @@ def p_struct_decl(p):
 
 def p_campos_struct(p):
     """campos_struct : campo_struct
-                     | campo_struct COMA campos_struct"""
+                     | campos_struct campo_struct"""
     if len(p) == 2:
         p[0] = [p[1]]
     else:
-        p[0] = [p[1]] + p[3]
+        p[0] = p[1] + [p[2]]
 
 def p_campo_struct(p):
-    """campo_struct : ID DOSPUNTOS tipo"""
+    """campo_struct : ID DOSPUNTOS tipo COMA
+                     | ID DOSPUNTOS tipo"""
+    # La coma en el ultimo campo es opcional
     p[0] = (p[1], p[3])
 
 def p_valores_struct(p):

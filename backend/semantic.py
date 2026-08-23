@@ -17,8 +17,10 @@ class TablaSimbolos:
         self.padre = padre
         self.hijos = []
     
-    def agregar(self, nombre, simbolo):
-        if nombre in self.simbolos:
+    def agregar(self, nombre, simbolo, permitir_sombreado=True):
+        # se puede sobreescribir en el mismo ambito, para funciones y structs
+        #  se llama con permitir_sombreado=False.
+        if nombre in self.simbolos and not permitir_sombreado:
             return False, f"Simbolo ya declarado: {nombre}"
         self.simbolos[nombre] = simbolo
         return True, None
@@ -65,7 +67,7 @@ class AnalizadorSemantico:
         simbolo.parametros = parametros
         simbolo.tipo_retorno = tipo_retorno
 
-        ok, error = self.tabla_global.agregar(nombre, simbolo)
+        ok, error = self.tabla_global.agregar(nombre, simbolo, permitir_sombreado=False)
         if not ok:
             self.errores.append({
                 'tipo': 'Semantico',
@@ -415,6 +417,8 @@ class AnalizadorSemantico:
             pass
         elif expr[0] == 'char':
             pass
+        elif expr[0] == 'string_from':
+            self._analizar_expresion(expr[1])
 
     # OBTENER EL TIPO DE LA EXPRESION
     def _obtener_tipo_expresion(self, expr):
@@ -426,6 +430,8 @@ class AnalizadorSemantico:
             return 'bool'
         elif expr[0] == 'char':
             return 'char'
+        elif expr[0] == 'string_from':
+            return 'String'
         elif expr[0] == 'var':
             simbolo, error = self.tabla_actual.obtener(expr[1])
             if not error:
