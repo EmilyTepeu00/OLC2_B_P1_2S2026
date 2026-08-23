@@ -14,12 +14,12 @@ fn main() {
         age: 25
     };
     
-    println(persona.name);
-    println(persona.age);
+    println!(persona.name);
+    println!(persona.age);
 }
 """
 
-ast, errores_parseo = parsear(codigo)
+ast, errores_parseo, errores_lexicos, lineas = parsear(codigo)
 
 if errores_parseo:
     print("Errores de parseo:")
@@ -27,7 +27,7 @@ if errores_parseo:
         print(f"  {e['mensaje']}")
 else:
     analizador = AnalizadorSemantico()
-    errores = analizador.analizar(ast)
+    errores = analizador.analizar(ast, lineas=lineas)
     
     if errores:
         print("Errores semanticos:")
@@ -35,7 +35,7 @@ else:
             print(f"  {e['mensaje']}")
     else:
         interprete = Interprete()
-        salida, errores_ejecucion = interprete.ejecutar(ast)
+        salida, errores_ejecucion = interprete.ejecutar(ast, lineas=lineas)
         
         print("=== EJECUCION ===\n")
         if errores_ejecucion:

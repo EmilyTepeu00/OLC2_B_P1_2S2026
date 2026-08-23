@@ -1,9 +1,10 @@
 # --- ANALIZADOR SINTACTICO ---
 
 import ply.yacc as yacc
-from backend.lexer import tokens, lexer
+from backend.lexer import tokens, lexer, escanear_errores_lexicos, encontrar_columna
 
 errores_parseo = []
+lineas_nodo = {}
 
 inicio = 'programa'
 
@@ -36,6 +37,7 @@ def p_funcion(p):
         p[0] = ('funcion', p[2], p[4], p[7], p[9])
     else:
         p[0] = ('funcion', p[2], p[4], None, p[7])
+    lineas_nodo[id(p[0])] = p.lineno(1)
 
 def p_lista_parametros(p):
     """lista_parametros : 
@@ -88,6 +90,9 @@ def p_sentencia(p):
                  | sentencia_continue
                  | expresion PUNTOCOMA"""
     p[0] = p[1]
+    linea = p.lineno(1)
+    if linea and isinstance(p[0], tuple):
+        lineas_nodo[id(p[0])] = linea
 
 def p_declaracion_let(p):
     """declaracion_let : LET ID DOSPUNTOS tipo ASIGN expresion PUNTOCOMA
@@ -323,6 +328,7 @@ def p_expresion_array_slice(p):
 def p_struct_decl(p):
     """struct_decl : STRUCT ID LLAVEIZQ campos_struct LLAVEDER"""
     p[0] = ('struct', p[2], p[4])
+    lineas_nodo[id(p[0])] = p.lineno(1)
 
 def p_campos_struct(p):
     """campos_struct : campo_struct
@@ -354,17 +360,38 @@ def p_expresion_field_access(p):
     """expresion : expresion PUNTO ID"""
     p[0] = ('field_access', p[1], p[3])
 
+def p_sentencia_error(p):
+    """sentencia : error PUNTOCOMA
+                  | error LLAVEDER"""
+    # Recuperacion de errores sintacticos si algo en una sentencia no calza con la gramatica
+    # YACC descarta tokens hasta el siguiente ';' o '}' y sigue parseando el resto dela rchivo desde ahi en vez de dat errror
+    p[0] = ('error_stmt',)
+
 def p_error(p):
     if p:
+        columna = encontrar_columna(p.lexer.lexdata, p.lexpos)
         errores_parseo.append({
+            'tipo': 'Sintactico',
             'linea': p.lineno,
-            'mensaje': f'Token inesperado: {p.value}'
+            'columna': columna,
+            'mensaje': f"Token inesperado: '{p.value}'.",
+        })
+    else:
+        errores_parseo.append({
+            'tipo': 'Sintactico',
+            'linea': 0,
+            'columna': 0,
+            'mensaje': 'Fin de archivo inesperado.',
         })
 
 parser = yacc.yacc()
 
 def parsear(codigo):
-    global errores_parseo
+    global errores_parseo, lineas_nodo
     errores_parseo = []
-    resultado = parser.parse(codigo, lexer=lexer)
-    return resultado, errores_parseo
+    lineas_nodo = {}
+    # Ver que se detecten todos los errores lexicos del archivo
+    errores_lex = escanear_errores_lexicos(codigo)
+    lexer.lineno = 1
+    resultado = parser.parse(codigo, lexer=lexer, tracking=True)
+    return resultado, errores_parseo, errores_lex, lineas_nodo

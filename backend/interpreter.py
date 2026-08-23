@@ -60,10 +60,15 @@ class Interprete:
         self.funciones = {}
         self.salida = []
         self.errores = []
+        self.lineas = {}  # id(nodo_sentencia) -> numero de linea (viene del parser)
+        self.lineas_con_error_semantico = set()  # lineas que el semantico ya marco como invalidas
     
-    def ejecutar(self, ast):
+    def ejecutar(self, ast, lineas=None, lineas_con_error_semantico=None):
         self.salida = []
         self.errores = []
+        self.lineas = lineas or {}
+        # Si el analizador semantico ya reporto un error, el interprete no vuelve a ejecutar esa sentencia para no mostrar el mimso problema dos veces
+        self.lineas_con_error_semantico = lineas_con_error_semantico or set()
         programa = ast
 
         # Registrar todas las funciones y structs
@@ -75,13 +80,17 @@ class Interprete:
 
         # Buscar y ejecutar main
         if 'main' not in self.funciones:
-            self.errores.append("Error: No se encontró la funcion main")
+            self.errores.append({
+                'tipo': 'Semantico',
+                'linea': 0,
+                'mensaje': 'No se encontro la funcion main.',
+            })
             return self.salida, self.errores
         
         try:
             self._ejecutar_funcion('main', [])
         except Exception as e:
-            self.errores.append(str(e))
+            self.errores.append({'tipo': 'Semantico', 'linea': 0, 'mensaje': str(e)})
 
         return self.salida, self.errores
     
@@ -105,16 +114,30 @@ class Interprete:
                 self.entorno_actual.declarar(nom_param, None, True)
         
         # Ejecutar cuerpo
-        resultado = None
-        for sentencia in cuerpo:
-            resultado = self._ejecutar_sentencia(sentencia)
-            if isinstance(resultado, dict) and resultado.get('tipo') == 'return':
-                # Restaurar entorno y retornar valor
-                self.entorno_actual = entorno_anterior
-                return resultado['valor']
-        
-        # Restaurar entorno
+        resultado = self._ejecutar_lista_sentencias(cuerpo)
         self.entorno_actual = entorno_anterior
+        if isinstance(resultado, dict) and resultado.get('tipo') == 'return':
+            return resultado['valor']
+        return None
+    
+    def _ejecutar_lista_sentencias(self, cuerpo):
+        # Ejecuta las sentencias en el entorno actual y si una sentencia falla en la ejecucion se registra el error y continua con el siguiente
+        for sentencia in cuerpo:
+            linea = self.lineas.get(id(sentencia), 0)
+            if linea and linea in self.lineas_con_error_semantico:
+                # Ya se reporto un error semantico en esa linea y no se ejecuta
+                continue
+            try:
+                resultado = self._ejecutar_sentencia(sentencia)
+            except Exception as e:
+                self.errores.append({
+                    'tipo': 'Semantico',
+                    'linea': linea,
+                    'mensaje': str(e),
+                })
+                continue
+            if isinstance(resultado, dict) and resultado.get('tipo') in ('return', 'break', 'continue'):
+                return resultado
         return None
     
     def _ejecutar_sentencia(self, sentencia):
@@ -188,43 +211,21 @@ class Interprete:
         if condicion_valor:
             entorno_anterior = self.entorno_actual
             self.entorno_actual = Entorno(self.entorno_actual)
-            
-            for sentencia in cuerpo_entonces:
-                resultado = self._ejecutar_sentencia(sentencia)
-                if isinstance(resultado, dict):
-                    if resultado.get('tipo') == 'return':
-                        self.entorno_actual = entorno_anterior
-                        return resultado
-                    elif resultado.get('tipo') in ['break', 'continue']:
-                        self.entorno_actual = entorno_anterior
-                        return resultado
-            
+            resultado = self._ejecutar_lista_sentencias(cuerpo_entonces)
             self.entorno_actual = entorno_anterior
+            if isinstance(resultado, dict) and resultado.get('tipo') in ('return', 'break', 'continue'):
+                return resultado
         elif cuerpo_sino:
             entorno_anterior = self.entorno_actual
             self.entorno_actual = Entorno(self.entorno_actual)
             
             if isinstance(cuerpo_sino, list):
-                for sentencia in cuerpo_sino:
-                    resultado = self._ejecutar_sentencia(sentencia)
-                    if isinstance(resultado, dict):
-                        if resultado.get('tipo') == 'return':
-                            self.entorno_actual = entorno_anterior
-                            return resultado
-                        elif resultado.get('tipo') in ['break', 'continue']:
-                            self.entorno_actual = entorno_anterior
-                            return resultado
+                resultado = self._ejecutar_lista_sentencias(cuerpo_sino)
             else:
                 resultado = self._ejecutar_sentencia(cuerpo_sino)
-                if isinstance(resultado, dict):
-                    if resultado.get('tipo') == 'return':
-                        self.entorno_actual = entorno_anterior
-                        return resultado
-                    elif resultado.get('tipo') in ['break', 'continue']:
-                        self.entorno_actual = entorno_anterior
-                        return resultado
-            
             self.entorno_actual = entorno_anterior
+            if isinstance(resultado, dict) and resultado.get('tipo') in ('return', 'break', 'continue'):
+                return resultado
         
         return None
     
@@ -239,31 +240,21 @@ class Interprete:
             
             entorno_anterior = self.entorno_actual
             self.entorno_actual = Entorno(self.entorno_actual)
-            
-            interrumpir_while = False
-            for sentencia in cuerpo:
-                resultado = self._ejecutar_sentencia(sentencia)
-                if isinstance(resultado, dict):
-                    if resultado.get('tipo') == 'return':
-                        self.entorno_actual = entorno_anterior
-                        return resultado
-                    elif resultado.get('tipo') == 'break':
-                        self.entorno_actual = entorno_anterior
-                        # Si el break trae una etiqueta no es para este while, hay que burbujearlo al loop externo correspondiente
-                        etiqueta = resultado.get('etiqueta')
-                        return None if etiqueta is None else resultado
-                    elif resultado.get('tipo') == 'continue':
-                        etiqueta = resultado.get('etiqueta')
-                        if etiqueta is None:
-                            interrumpir_while = True
-                            break
-                        else:
-                            self.entorno_actual = entorno_anterior
-                            return resultado
-            
+            resultado = self._ejecutar_lista_sentencias(cuerpo)
             self.entorno_actual = entorno_anterior
-            if interrumpir_while:
-                continue
+            
+            if isinstance(resultado, dict):
+                if resultado.get('tipo') == 'return':
+                    return resultado
+                elif resultado.get('tipo') == 'break':
+                    # Si el break trae una etiqueta no es para este while, hay que burbujearlo al loop externo correspondiente
+                    etiqueta = resultado.get('etiqueta')
+                    return None if etiqueta is None else resultado
+                elif resultado.get('tipo') == 'continue':
+                    etiqueta = resultado.get('etiqueta')
+                    if etiqueta is not None:
+                        return resultado
+                    # etiqueta None: sigue con la siguiente iteracion del while
         
         return None
     
@@ -274,32 +265,24 @@ class Interprete:
         while True:
             entorno_anterior = self.entorno_actual
             self.entorno_actual = Entorno(self.entorno_actual)
-            
-            continuar_loop = False
-            for sentencia in cuerpo:
-                resultado = self._ejecutar_sentencia(sentencia)
-                if isinstance(resultado, dict):
-                    if resultado.get('tipo') == 'return':
-                        self.entorno_actual = entorno_anterior
-                        return resultado
-                    elif resultado.get('tipo') == 'break':
-                        self.entorno_actual = entorno_anterior
-                        etiqueta_break = resultado.get('etiqueta')
-                        # Si no trae etiqueta o la etiqueta es la de este loop, se detiene aqui
-                        # Si trae otra etiqueta, se burbujea hacia arriba
-                        if etiqueta_break is None or etiqueta_break == etiqueta:
-                            return None
-                        return resultado
-                    elif resultado.get('tipo') == 'continue':
-                        etiqueta_continue = resultado.get('etiqueta')
-                        if etiqueta_continue is None or etiqueta_continue == etiqueta:
-                            continuar_loop = True
-                            break
-                        else:
-                            self.entorno_actual = entorno_anterior
-                            return resultado
-            
+            resultado = self._ejecutar_lista_sentencias(cuerpo)
             self.entorno_actual = entorno_anterior
+            
+            if isinstance(resultado, dict):
+                if resultado.get('tipo') == 'return':
+                    return resultado
+                elif resultado.get('tipo') == 'break':
+                    etiqueta_break = resultado.get('etiqueta')
+                    # Si no trae etiqueta o la etiqueta es la de este loop, se detiene aqui
+                    # Si trae otra etiqueta, se burbujea hacia arriba
+                    if etiqueta_break is None or etiqueta_break == etiqueta:
+                        return None
+                    return resultado
+                elif resultado.get('tipo') == 'continue':
+                    etiqueta_continue = resultado.get('etiqueta')
+                    if etiqueta_continue is not None and etiqueta_continue != etiqueta:
+                        return resultado
+                    # etiqueta None o de este loop: sigue con la siguiente iteracion
     
     def _ejecutar_match(self, nodo):
         valor = self._ejecutar_expresion(nodo[1])
@@ -323,12 +306,7 @@ class Interprete:
         
         entorno_anterior = self.entorno_actual
         self.entorno_actual = Entorno(self.entorno_actual)
-        resultado_final = None
-        for sentencia in cuerpo_a_ejecutar:
-            resultado = self._ejecutar_sentencia(sentencia)
-            if isinstance(resultado, dict) and resultado.get('tipo') in ('return', 'break', 'continue'):
-                resultado_final = resultado
-                break
+        resultado_final = self._ejecutar_lista_sentencias(cuerpo_a_ejecutar)
         self.entorno_actual = entorno_anterior
         return resultado_final
     

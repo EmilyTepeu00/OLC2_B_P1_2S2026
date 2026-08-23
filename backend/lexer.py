@@ -2,6 +2,21 @@
 
 import ply.lex as lex
 
+# Lista de errores lexicos se resetea en escanear_errores_lexicos() al inicio de cada analisis
+errores_lexicos = []
+
+def encontrar_columna(codigo, lexpos):
+    inicio_linea = codigo.rfind('\n', 0, lexpos) + 1
+    return (lexpos - inicio_linea) + 1
+
+def agregar_error_lexico(linea, columna, mensaje):
+    errores_lexicos.append({
+        'tipo': 'Lexico',
+        'linea': linea,
+        'columna': columna,
+        'mensaje': mensaje,
+    })
+
 # PALABRAS RESERVADAS
 reserved = {
     'let': 'LET',
@@ -152,8 +167,8 @@ def t_COMMENT_BLOCK(t):
 
 def t_COMMENT_BLOCK_SIN_CERRAR(t):
     r'/\*(.|\n)*'
-    print(f"[Error Lexico] Linea {t.lineno}, Columna {t.lexpos} "
-          f"Comentario de bloque sin cerrar (falta '*/').")
+    columna = encontrar_columna(t.lexer.lexdata, t.lexpos)
+    agregar_error_lexico(t.lineno, columna, "Comentario de bloque sin cerrar (falta '*/').")
     t.lexer.lineno += t.value.count('\n')
 
 # CONTADOR DE LINEAS
@@ -163,11 +178,25 @@ def t_newline(t):
 
 # MANEJO DE ERRORES
 def t_error(t):
-    print(f"[Error Lexico] Linea {t.lineno}, Columna {t.lexpos} Caracter no reconocido: '{t.value[0]}'")
+    columna = encontrar_columna(t.lexer.lexdata, t.lexpos)
+    agregar_error_lexico(t.lineno, columna, f"Caracter no reconocido '{t.value[0]}'.")
     t.lexer.skip(1)
 
 # CREAR EL LEXER
 lexer = lex.lex()
+
+def escanear_errores_lexicos(codigo):
+    global errores_lexicos
+    errores_lexicos = []
+    copia = lexer.clone()
+    copia.lineno = 1
+    copia.input(codigo)
+    while True:
+        tok = copia.token()
+        if not tok:
+            break
+    return list(errores_lexicos)
+
 
 # PRUEBA
 if __name__ == "__main__":

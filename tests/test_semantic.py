@@ -8,7 +8,7 @@ fn main() {
     let mut y = 20;
     let suma = x + y;
     y = 30;
-    println(suma);
+    println!(suma);
 }
 """
 
@@ -34,7 +34,7 @@ def probar(codigo, descripcion):
     print(f"PRUEBA: {descripcion}")
     print('='*50)
     
-    ast, errores_parseo = parsear(codigo)
+    ast, errores_parseo, errores_lexicos, lineas = parsear(codigo)
     
     if errores_parseo:
         print("Errores de parseo:")
@@ -43,7 +43,7 @@ def probar(codigo, descripcion):
         return
     
     analizador = AnalizadorSemantico()
-    errores = analizador.analizar(ast)
+    errores = analizador.analizar(ast, lineas=lineas)
     
     if errores:
         print("Errores semanticos:")

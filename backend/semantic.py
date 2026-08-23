@@ -10,6 +10,7 @@ class Simbolo:
         self.valor = valor
         self.parametros = None      # Para funciones
         self.tipo_retorno = None    # Para funciones
+        self.linea = None           # Linea real donde se declaro (para la de tabla de simbolos)
 
 class TablaSimbolos:
     def __init__(self, padre=None):
@@ -42,14 +43,29 @@ class AnalizadorSemantico:
         self.tabla_global = TablaSimbolos()
         self.tabla_actual = self.tabla_global
         self.errores = []
+        self.lineas = {}       # id(nodo_sentencia) -> numero de linea (viene del parser)
+        self.linea_actual = 0  # ultima linea conocida, se actualiza al recorrer sentencias
+        self.structs = {}      # nombre_struct -> {nombre_campo: tipo_campo}
     
-    def analizar(self, ast):
+    def _linea_de(self, nodo):
+        # Devuelve la linea real de un nodo si esta registrada o la ultima linea conocida
+        if isinstance(nodo, tuple) and id(nodo) in self.lineas:
+            self.linea_actual = self.lineas[id(nodo)]
+        return self.linea_actual
+    
+    def analizar(self, ast, lineas=None):
         self.errores = []
+        self.lineas = lineas or {}
+        self.linea_actual = 0
+        self.structs = {}
         programa = ast
         
-        # PRIMERA PASADA: registrar todas las funciones
+        # PRIMERA PASADA: registrar todas las funciones y structs
         for funcion in programa[1]:
-            self._registrar_funcion(funcion)
+            if funcion[0] == 'struct':
+                self.structs[funcion[1]] = dict(funcion[2])
+            else:
+                self._registrar_funcion(funcion)
         
         # SEGUNDA PASADA: analizar el cuerpo de las funciones
         for funcion in programa[1]:
@@ -66,12 +82,13 @@ class AnalizadorSemantico:
         simbolo = Simbolo(nombre, 'funcion', tipo_retorno)
         simbolo.parametros = parametros
         simbolo.tipo_retorno = tipo_retorno
+        simbolo.linea = self._linea_de(nodo_funcion)
 
         ok, error = self.tabla_global.agregar(nombre, simbolo, permitir_sombreado=False)
         if not ok:
             self.errores.append({
                 'tipo': 'Semantico',
-                'linea': 0,
+                'linea': self._linea_de(nodo_funcion),
                 'mensaje': f"Funcion ya declarada: {nombre}"
             })
     
@@ -80,6 +97,7 @@ class AnalizadorSemantico:
         parametros = nodo_funcion[2]
         tipo_retorno = nodo_funcion[3] if len(nodo_funcion) > 3 else None
         cuerpo = nodo_funcion[4] if len(nodo_funcion) > 4 else []
+        linea_funcion = self._linea_de(nodo_funcion)
 
         # Crear ambito para la funcion
         nueva_tabla = TablaSimbolos(self.tabla_global)
@@ -89,15 +107,17 @@ class AnalizadorSemantico:
         # Registrar parametros como variables
         for nom_param, tipo_param in parametros:
             simbolo = Simbolo(nom_param, 'variable', tipo_param, True)
+            simbolo.linea = linea_funcion
             ok, error = self.tabla_actual.agregar(nom_param, simbolo)
             if not ok:
                 self.errores.append({
                     'tipo': 'Semantico',
-                    'linea': 0,
+                    'linea': linea_funcion,
                     'mensaje': f"Error registrando parametro: {nom_param}"
                 })
         
         # Analizar cuerpo
+        self.linea_actual = linea_funcion
         for sentencia in cuerpo:
             self._analizar_sentencia(sentencia)
         
@@ -105,6 +125,7 @@ class AnalizadorSemantico:
         self.tabla_actual = self.tabla_actual.padre
     
     def _analizar_sentencia(self, sentencia):
+        self._linea_de(sentencia)  # actualiza self.linea_actual para los errores de esta sentencia
         if sentencia[0] == 'let':
             self._analizar_let(sentencia)
         elif sentencia[0] == 'asignar':
@@ -155,16 +176,17 @@ class AnalizadorSemantico:
             if not self._son_tipos_compatibles(tipo, tipo_valor):
                 self.errores.append({
                     'tipo': 'Semantico',
-                    'linea': 0,
+                    'linea': self.linea_actual,
                     'mensaje': f"Tipos incompatibles: no se puede asignar {tipo_valor} a {tipo} en variable {nombre}"
                 })
         
         simbolo = Simbolo(nombre, 'variable', tipo, mutable, valor)
+        simbolo.linea = self.linea_actual
         ok, error = self.tabla_actual.agregar(nombre, simbolo)
         if not ok:
             self.errores.append({
                 'tipo': 'Semantico',
-                'linea': 0,
+                'linea': self.linea_actual,
                 'mensaje': f"Variable ya declarada: {nombre}"
             })
     
@@ -177,7 +199,7 @@ class AnalizadorSemantico:
         if error:
             self.errores.append({
                 'tipo': 'Semantico',
-                'linea': 0,
+                'linea': self.linea_actual,
                 'mensaje': f"Variable no declarada: {nombre}"
             })
             return
@@ -186,7 +208,7 @@ class AnalizadorSemantico:
         if not simbolo.mutable:
             self.errores.append({
                 'tipo': 'Semantico',
-                'linea': 0,
+                'linea': self.linea_actual,
                 'mensaje': f"Variable inmutable: {nombre}"
             })
             return
@@ -202,7 +224,7 @@ class AnalizadorSemantico:
             if not self._son_tipos_compatibles(tipo_var, tipo_valor):
                 self.errores.append({
                     'tipo': 'Semantico',
-                    'linea': 0,
+                    'linea': self.linea_actual,
                     'mensaje': f"Tipos incompatibles: no se puede asignar {tipo_valor} a {tipo_var} en {nombre}"
                 })
     
@@ -216,7 +238,7 @@ class AnalizadorSemantico:
         if tipo_cond is not None and tipo_cond != 'bool':
             self.errores.append({
                 'tipo': 'Semantico',
-                'linea': 0,
+                'linea': self.linea_actual,
                 'mensaje': f"La condicion del if debe ser booleana, pero es {tipo_cond}"
             })
         
@@ -244,7 +266,7 @@ class AnalizadorSemantico:
         if tipo_cond is not None and tipo_cond != 'bool':
             self.errores.append({
                 'tipo': 'Semantico',
-                'linea': 0,
+                'linea': self.linea_actual,
                 'mensaje': f"La condicion del while debe ser booleana, pero es {tipo_cond}"
             })
         
@@ -275,6 +297,8 @@ class AnalizadorSemantico:
         embebidas = ['println', 'typeof', 'random', 'len', 'contains', 
                     'replace', 'split', 'to_uppercase', 'to_lowercase', 'reverse']
         if nombre in embebidas:
+            for arg in argumentos:
+                self._analizar_expresion(arg)
             return
         
         # Verificar que la funcion exista
@@ -282,7 +306,7 @@ class AnalizadorSemantico:
         if error:
             self.errores.append({
                 'tipo': 'Semantico',
-                'linea': 0,
+                'linea': self.linea_actual,
                 'mensaje': f"Funcion no declarada: {nombre}"
             })
             return
@@ -292,7 +316,7 @@ class AnalizadorSemantico:
             if len(argumentos) != len(simbolo.parametros):
                 self.errores.append({
                     'tipo': 'Semantico',
-                    'linea': 0,
+                    'linea': self.linea_actual,
                     'mensaje': f"Numero incorrecto de argumentos para {nombre}: esperaba {len(simbolo.parametros)}, recibio {len(argumentos)}"
                 })
     
@@ -302,7 +326,7 @@ class AnalizadorSemantico:
         if error:
             self.errores.append({
                 'tipo': 'Semantico',
-                'linea': 0,
+                'linea': self.linea_actual,
                 'mensaje': f"Variable no declarada: {nombre}"
             })
     
@@ -325,7 +349,7 @@ class AnalizadorSemantico:
                 elif tipo_izq is not None and tipo_der is not None:
                     self.errores.append({
                         'tipo': 'Semantico',
-                        'linea': 0,
+                        'linea': self.linea_actual,
                         'mensaje': f"Operador '+' no permitido entre {tipo_izq} y {tipo_der}"
                     })
 
@@ -338,7 +362,7 @@ class AnalizadorSemantico:
                 elif tipo_izq is not None and tipo_der is not None:
                     self.errores.append({
                         'tipo': 'Semantico',
-                        'linea': 0,
+                        'linea': self.linea_actual,
                         'mensaje': f"Operador '*' no permitido entre {tipo_izq} y {tipo_der}"
                     })
 
@@ -349,7 +373,7 @@ class AnalizadorSemantico:
                 elif tipo_izq is not None and tipo_der is not None:
                     self.errores.append({
                         'tipo': 'Semantico',
-                        'linea': 0,
+                        'linea': self.linea_actual,
                         'mensaje': f"Operador '{operador}' no permitido entre {tipo_izq} y {tipo_der}"
                     })
         
@@ -359,7 +383,7 @@ class AnalizadorSemantico:
                 if not self._son_tipos_compatibles(tipo_izq, tipo_der):
                     self.errores.append({
                         'tipo': 'Semantico',
-                        'linea': 0,
+                        'linea': self.linea_actual,
                         'mensaje': f"Operador '{operador}' no permitido entre {tipo_izq} y {tipo_der}"
                     })
         
@@ -369,7 +393,7 @@ class AnalizadorSemantico:
                 if tipo_izq != 'bool' or tipo_der != 'bool':
                     self.errores.append({
                         'tipo': 'Semantico',
-                        'linea': 0,
+                        'linea': self.linea_actual,
                         'mensaje': f"Operador '{operador}' solo funciona con booleanos, pero se encontró {tipo_izq} y {tipo_der}"
                     })
         
@@ -387,14 +411,14 @@ class AnalizadorSemantico:
             if tipo_op is not None and tipo_op != 'bool':
                 self.errores.append({
                     'tipo': 'Semantico',
-                    'linea': 0,
+                    'linea': self.linea_actual,
                     'mensaje': f"Operador '!' solo funciona con booleanos, pero se encontró {tipo_op}"
                 })
         elif operador == '-':
             if tipo_op is not None and tipo_op not in ['i32', 'f64']:
                 self.errores.append({
                     'tipo': 'Semantico',
-                    'linea': 0,
+                    'linea': self.linea_actual,
                     'mensaje': f"Operador '-' unario solo funciona con numeros, pero se encontró {tipo_op}"
                 })
         
@@ -419,6 +443,83 @@ class AnalizadorSemantico:
             pass
         elif expr[0] == 'string_from':
             self._analizar_expresion(expr[1])
+        elif expr[0] == 'array_literal':
+            for elem in expr[1]:
+                self._analizar_expresion(elem)
+        elif expr[0] == 'array_repeat':
+            self._analizar_expresion(expr[1])
+        elif expr[0] == 'array_access':
+            self._analizar_expresion(expr[1])
+            self._analizar_expresion(expr[2])
+            tipo_indice = self._obtener_tipo_expresion(expr[2])
+            if tipo_indice is not None and tipo_indice != 'i32':
+                self.errores.append({
+                    'tipo': 'Semantico',
+                    'linea': self.linea_actual,
+                    'mensaje': f"El indice de un arreglo debe ser i32, se recibio {tipo_indice}"
+                })
+            # Verificar rango solo en tiempo de analisis cuando el indice es un literal y el arreglo es una variable declarada con un arreglo literal
+            if expr[2][0] == 'literal' and isinstance(expr[2][1], int) and expr[1][0] == 'var':
+                simbolo, error = self.tabla_actual.obtener(expr[1][1])
+                if not error and simbolo.valor is not None and simbolo.valor[0] == 'array_literal':
+                    tam = len(simbolo.valor[1])
+                    if expr[2][1] < 0 or expr[2][1] >= tam:
+                        self.errores.append({
+                            'tipo': 'Semantico',
+                            'linea': self.linea_actual,
+                            'mensaje': f"Indice fuera de los limites del arreglo '{expr[1][1]}' (tamano {tam})."
+                        })
+        elif expr[0] == 'array_slice':
+            self._analizar_expresion(expr[1])
+            self._analizar_expresion(expr[2])
+            self._analizar_expresion(expr[3])
+        elif expr[0] == 'struct_init':
+            nombre_struct = expr[1]
+            campos_dados = expr[2]
+            campos_decl = self.structs.get(nombre_struct)
+            if campos_decl is None:
+                self.errores.append({
+                    'tipo': 'Semantico',
+                    'linea': self.linea_actual,
+                    'mensaje': f"Struct no declarado: {nombre_struct}"
+                })
+            else:
+                nombres_dados = set()
+                for campo, val_expr in campos_dados:
+                    self._analizar_expresion(val_expr)
+                    nombres_dados.add(campo)
+                    if campo not in campos_decl:
+                        self.errores.append({
+                            'tipo': 'Semantico',
+                            'linea': self.linea_actual,
+                            'mensaje': f"El struct '{nombre_struct}' no tiene el campo '{campo}'"
+                        })
+                    else:
+                        tipo_campo = campos_decl[campo]
+                        tipo_val = self._obtener_tipo_expresion(val_expr)
+                        if tipo_val is not None and not self._son_tipos_compatibles(tipo_campo, tipo_val):
+                            self.errores.append({
+                                'tipo': 'Semantico',
+                                'linea': self.linea_actual,
+                                'mensaje': f"Tipos incompatibles en el campo '{campo}' de '{nombre_struct}': se esperaba {tipo_campo}, se recibio {tipo_val}"
+                            })
+                faltantes = set(campos_decl.keys()) - nombres_dados
+                if faltantes:
+                    self.errores.append({
+                        'tipo': 'Semantico',
+                        'linea': self.linea_actual,
+                        'mensaje': f"Faltan campos al inicializar '{nombre_struct}': {', '.join(sorted(faltantes))}"
+                    })
+        elif expr[0] == 'field_access':
+            self._analizar_expresion(expr[1])
+            tipo_base = self._obtener_tipo_expresion(expr[1])
+            if tipo_base is not None and tipo_base in self.structs:
+                if expr[2] not in self.structs[tipo_base]:
+                    self.errores.append({
+                        'tipo': 'Semantico',
+                        'linea': self.linea_actual,
+                        'mensaje': f"El struct '{tipo_base}' no tiene el campo '{expr[2]}'"
+                    })
 
     # OBTENER EL TIPO DE LA EXPRESION
     def _obtener_tipo_expresion(self, expr):
@@ -432,6 +533,28 @@ class AnalizadorSemantico:
             return 'char'
         elif expr[0] == 'string_from':
             return 'String'
+        elif expr[0] == 'array_literal':
+            if expr[1]:
+                tipo_elem = self._obtener_tipo_expresion(expr[1][0])
+                return f'[{tipo_elem}]' if tipo_elem else None
+            return None
+        elif expr[0] == 'array_repeat':
+            tipo_elem = self._obtener_tipo_expresion(expr[1])
+            return f'[{tipo_elem}]' if tipo_elem else None
+        elif expr[0] == 'array_access':
+            tipo_base = self._obtener_tipo_expresion(expr[1])
+            if tipo_base and tipo_base.startswith('[') and tipo_base.endswith(']'):
+                return tipo_base[1:-1]
+            return None
+        elif expr[0] == 'array_slice':
+            return self._obtener_tipo_expresion(expr[1])
+        elif expr[0] == 'struct_init':
+            return expr[1]  # el "tipo" de una instancia es el nombre del struct
+        elif expr[0] == 'field_access':
+            tipo_base = self._obtener_tipo_expresion(expr[1])
+            if tipo_base and tipo_base in self.structs:
+                return self.structs[tipo_base].get(expr[2])
+            return None
         elif expr[0] == 'var':
             simbolo, error = self.tabla_actual.obtener(expr[1])
             if not error:

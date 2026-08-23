@@ -8,31 +8,31 @@ fn main() {
     
     // contains
     let contiene = contains(texto, "Mundo");
-    println(contiene);
+    println!(contiene);
     
     // replace
     let nuevo = replace(texto, "Rust", "Compiladores");
-    println(nuevo);
+    println!(nuevo);
     
     // split
     let partes = split(texto, " ");
-    println(partes);
+    println!(partes);
     
     // to_uppercase
     let mayus = to_uppercase(texto);
-    println(mayus);
+    println!(mayus);
     
     // to_lowercase
     let minus = to_lowercase(texto);
-    println(minus);
+    println!(minus);
     
     // reverse (string)
     let invertido = reverse(texto);
-    println(invertido);
+    println!(invertido);
 }
 """
 
-ast, errores_parseo = parsear(codigo)
+ast, errores_parseo, errores_lexicos, lineas = parsear(codigo)
 
 if errores_parseo:
     print("Errores de parseo:")
@@ -40,7 +40,7 @@ if errores_parseo:
         print(f"  {e['mensaje']}")
 else:
     analizador = AnalizadorSemantico()
-    errores = analizador.analizar(ast)
+    errores = analizador.analizar(ast, lineas=lineas)
     
     if errores:
         print("Errores semanticos:")
@@ -48,7 +48,7 @@ else:
             print(f"  {e['mensaje']}")
     else:
         interprete = Interprete()
-        salida, errores_ejecucion = interprete.ejecutar(ast)
+        salida, errores_ejecucion = interprete.ejecutar(ast, lineas=lineas)
         
         print("=== EJECUCION ===\n")
         if errores_ejecucion:

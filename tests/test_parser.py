@@ -7,9 +7,9 @@ fn main() {
     let suma = x + y;
     
     if suma > 10 {
-        println("Mayor que 10");
+        println!("Mayor que 10");
     } else {
-        println("Menor o igual a 10");
+        println!("Menor o igual a 10");
     }
     
     while y > 0 {
@@ -24,7 +24,7 @@ fn main() {
 }
 """
 
-ast, errores = parsear(codigo)
+ast, errores, errores_lexicos, lineas = parsear(codigo)
 
 print("=== PRUEBA DEL PARSER ===\n")
 

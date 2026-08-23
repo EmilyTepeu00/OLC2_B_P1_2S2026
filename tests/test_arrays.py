@@ -8,17 +8,17 @@ fn main() {
     let edades = [18, 20, 22];
     let repetidos = [0; 3];
     
-    println(numeros[0]);
-    println(edades[2]);
-    println(repetidos[1]);
+    println!(numeros[0]);
+    println!(edades[2]);
+    println!(repetidos[1]);
     
     // Slice
     let parte = &numeros[1..4];
-    println(parte);
+    println!(parte);
 }
 """
 
-ast, errores_parseo = parsear(codigo)
+ast, errores_parseo, errores_lexicos, lineas = parsear(codigo)
 
 if errores_parseo:
     print("Errores de parseo:")
@@ -26,7 +26,7 @@ if errores_parseo:
         print(f"  {e['mensaje']}")
 else:
     analizador = AnalizadorSemantico()
-    errores = analizador.analizar(ast)
+    errores = analizador.analizar(ast, lineas=lineas)
     
     if errores:
         print("Errores semanticos:")
@@ -34,7 +34,7 @@ else:
             print(f"  {e['mensaje']}")
     else:
         interprete = Interprete()
-        salida, errores_ejecucion = interprete.ejecutar(ast)
+        salida, errores_ejecucion = interprete.ejecutar(ast, lineas=lineas)
         
         print("=== EJECUCION ===\n")
         if errores_ejecucion:
