@@ -173,6 +173,8 @@ class Interprete:
             return sentencia[1]
         elif tipo == 'string':
             return sentencia[1]
+        elif tipo == 'char':
+            return sentencia[1]
         elif tipo == 'bool':
             return sentencia[1]
         elif tipo == 'var':
@@ -361,8 +363,20 @@ class Interprete:
 
         # Retornar el tipo de dato
         elif nombre == 'typeof':
+            # Debe devolver el nombre de tipo del lenguaje (i32, f64, bool, String...)
             if argumentos:
-                return type(argumentos[0]).__name__
+                valor = argumentos[0]
+                if isinstance(valor, bool):
+                    return 'bool'
+                if isinstance(valor, int):
+                    return 'i32'
+                if isinstance(valor, float):
+                    return 'f64'
+                if isinstance(valor, str):
+                    return 'String'
+                if isinstance(valor, list):
+                    return 'array'
+                return type(valor).__name__
             return 'null'
 
         # Retornar la longitud de un string/array
@@ -454,8 +468,16 @@ class Interprete:
         elif operador == '/':
             if derecha == 0:
                 raise Exception("Division por cero")
-            return izquierda / derecha
+            resultado = izquierda / derecha
+            # i32 / i32 debe dar i32 (division entera, truncando hacia 0 como en Rust y no float)
+            if isinstance(izquierda, int) and isinstance(derecha, int):
+                return int(resultado)  # int() trunca hacia cero, igual que Rust
+            return resultado
         elif operador == '%':
+            if isinstance(izquierda, int) and isinstance(derecha, int):
+                # Rust usa division truncada el signo del resultado sigue al dividendo)
+                cociente_truncado = int(izquierda / derecha) if derecha != 0 else 0
+                return izquierda - cociente_truncado * derecha
             return izquierda % derecha
         elif operador == '==':
             return izquierda == derecha

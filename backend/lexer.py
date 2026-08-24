@@ -145,14 +145,15 @@ def t_STRING(t):
     t.lexer.lineno += t.value.count('\n')
     return t
 
+def t_CHAR_LITERAL(t):
+    r"'([^'\\]|\\.)'"
+    # Antes porque ('[a-zA-Z_][a-zA-Z0-9_]* se comeria la "A" de 'A' antes dejando una comilla suelta
+    t.value = t.value[1:-1]
+    return t
+
 def t_LABEL(t):
     r"'[a-zA-Z_][a-zA-Z0-9_]*"
     # Etiqueta de loop estilo Rust: 'outer, 'inner
-    return t
-
-def t_CHAR_LITERAL(t):
-    r"'([^'\\]|\\.)'"
-    t.value = t.value[1:-1]
     return t
 
 # COMENTARIOS

@@ -133,7 +133,10 @@ def generar_tabla_simbolos(analizador):
 
     def recorrer_tabla(tabla, ambito):
         nonlocal counter
-        for nombre, simbolo in tabla.simbolos.items():
+        ambito = tabla.nombre_ambito  # el ambito real de esta tabla (global o el nombre de la funcion)
+        # Se recorre el historial y no tabla.simbolos
+        for simbolo in tabla.historial:
+            nombre = simbolo.nombre
             if simbolo.tipo_simbolo == 'variable':
                 valor = _formatear_valor_ast(simbolo.valor)
                 symbols.append({
@@ -158,7 +161,7 @@ def generar_tabla_simbolos(analizador):
                 })
                 counter += 1
         for hijo in tabla.hijos:
-            recorrer_tabla(hijo, ambito if ambito != 'global' else 'global')
+            recorrer_tabla(hijo, hijo.nombre_ambito)
 
     recorrer_tabla(analizador.tabla_global, 'global')
 

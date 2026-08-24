@@ -13,17 +13,20 @@ class Simbolo:
         self.linea = None           # Linea real donde se declaro (para la de tabla de simbolos)
 
 class TablaSimbolos:
-    def __init__(self, padre=None):
+    def __init__(self, padre=None, nombre_ambito='global'):
         self.simbolos = {}
+        self.historial = []
         self.padre = padre
         self.hijos = []
+        self.nombre_ambito = nombre_ambito  # 'global' o el nombre de la funcion a la que pertenece este scope
     
     def agregar(self, nombre, simbolo, permitir_sombreado=True):
         # se puede sobreescribir en el mismo ambito, para funciones y structs
         #  se llama con permitir_sombreado=False.
         if nombre in self.simbolos and not permitir_sombreado:
             return False, f"Simbolo ya declarado: {nombre}"
-        self.simbolos[nombre] = simbolo
+        self.simbolos[nombre] = simbolo  # la que usan las busquedas normales (obtener)
+        self.historial.append(simbolo)   # la que usa el reporte de tabla de simbolos
         return True, None
     
     def obtener(self, nombre):
@@ -34,7 +37,7 @@ class TablaSimbolos:
         return None, f"Simbolo no encontrado: {nombre}"
     
     def crear_hijo(self):
-        hijo = TablaSimbolos(self)
+        hijo = TablaSimbolos(self, nombre_ambito=self.nombre_ambito)
         self.hijos.append(hijo)
         return hijo
 
@@ -100,7 +103,7 @@ class AnalizadorSemantico:
         linea_funcion = self._linea_de(nodo_funcion)
 
         # Crear ambito para la funcion
-        nueva_tabla = TablaSimbolos(self.tabla_global)
+        nueva_tabla = TablaSimbolos(self.tabla_global, nombre_ambito=nombre)
         self.tabla_global.hijos.append(nueva_tabla)
         self.tabla_actual = nueva_tabla
 

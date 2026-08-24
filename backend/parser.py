@@ -238,6 +238,7 @@ def p_expresion_literal(p):
     """expresion : INTEGER
                  | FLOAT
                  | STRING
+                 | CHAR_LITERAL
                  | TRUE
                  | FALSE"""
     tipo_token = p.slice[1].type
@@ -245,6 +246,8 @@ def p_expresion_literal(p):
         p[0] = ('bool', p[1])
     elif tipo_token == 'STRING':
         p[0] = ('string', p[1])
+    elif tipo_token == 'CHAR_LITERAL':
+        p[0] = ('char', p[1])
     else:
         p[0] = ('literal', p[1])
 
