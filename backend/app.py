@@ -84,6 +84,48 @@ def ejecutar():
         }), 500
 
 
+def _formatear_valor_ast(nodo):
+    # Convierte el nodo AST de la expresion a un texto legible (como RUST) para la columna valor
+    if nodo is None:
+        return '—'
+    if not isinstance(nodo, tuple):
+        return str(nodo)
+    tipo = nodo[0]
+    if tipo == 'literal':
+        return str(nodo[1])
+    if tipo == 'string':
+        return f'"{nodo[1]}"'
+    if tipo == 'bool':
+        return 'true' if nodo[1] else 'false'
+    if tipo == 'char':
+        return f"'{nodo[1]}'"
+    if tipo == 'string_from':
+        return _formatear_valor_ast(nodo[1])
+    if tipo == 'array_literal':
+        return '[' + ', '.join(_formatear_valor_ast(e) for e in nodo[1]) + ']'
+    if tipo == 'array_repeat':
+        return f'[{_formatear_valor_ast(nodo[1])}; {nodo[2]}]'
+    if tipo == 'struct_init':
+        campos = ', '.join(f'{c}: {_formatear_valor_ast(v)}' for c, v in nodo[2])
+        return f'{nodo[1]} {{ {campos} }}'
+    if tipo == 'var':
+        return nodo[1]
+    if tipo == 'binop':
+        return f'{_formatear_valor_ast(nodo[2])} {nodo[1]} {_formatear_valor_ast(nodo[3])}'
+    if tipo == 'unop':
+        return f'{nodo[1]}{_formatear_valor_ast(nodo[2])}'
+    if tipo == 'llamada':
+        args = ', '.join(_formatear_valor_ast(a) for a in nodo[2])
+        return f'{nodo[1]}({args})'
+    if tipo == 'array_access':
+        return f'{_formatear_valor_ast(nodo[1])}[{_formatear_valor_ast(nodo[2])}]'
+    if tipo == 'array_slice':
+        return f'&{_formatear_valor_ast(nodo[1])}[{_formatear_valor_ast(nodo[2])}..{_formatear_valor_ast(nodo[3])}]'
+    if tipo == 'field_access':
+        return f'{_formatear_valor_ast(nodo[1])}.{nodo[2]}'
+    return str(nodo)
+
+
 def generar_tabla_simbolos(analizador):
     # Recorre la tabla de simbolos del analizador semantico y agrega los stucts declarados
     symbols = []
@@ -93,7 +135,7 @@ def generar_tabla_simbolos(analizador):
         nonlocal counter
         for nombre, simbolo in tabla.simbolos.items():
             if simbolo.tipo_simbolo == 'variable':
-                valor = str(simbolo.valor) if simbolo.valor is not None else '—'
+                valor = _formatear_valor_ast(simbolo.valor)
                 symbols.append({
                     'no': counter,
                     'nombre': nombre,

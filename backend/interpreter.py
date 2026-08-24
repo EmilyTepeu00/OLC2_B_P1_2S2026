@@ -429,6 +429,19 @@ class Interprete:
     
     def _ejecutar_binop(self, nodo):
         operador = nodo[1]
+
+        # && y || se evaluan con cortocircuito: si "izquierda" ya dio el resultado no se evalua "derecha"
+        if operador == '&&':
+            izquierda = self._ejecutar_expresion(nodo[2])
+            if not izquierda:
+                return False
+            return bool(self._ejecutar_expresion(nodo[3]))
+        elif operador == '||':
+            izquierda = self._ejecutar_expresion(nodo[2])
+            if izquierda:
+                return True
+            return bool(self._ejecutar_expresion(nodo[3]))
+
         izquierda = self._ejecutar_expresion(nodo[2])
         derecha = self._ejecutar_expresion(nodo[3])
         
@@ -456,10 +469,6 @@ class Interprete:
             return izquierda < derecha
         elif operador == '<=':
             return izquierda <= derecha
-        elif operador == '&&':
-            return izquierda and derecha
-        elif operador == '||':
-            return izquierda or derecha
         
         raise Exception(f"Operador desconocido: {operador}")
     
