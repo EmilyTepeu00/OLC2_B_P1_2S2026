@@ -2,6 +2,10 @@
 
 import re
 
+# Sub clase de 'str' string para typeof() para diferenciar un 'char' de un string
+class CaracterOxigen(str):
+    pass
+
 class Entorno:
     def __init__(self, padre=None):
         self.variables = {}
@@ -147,6 +151,10 @@ class Interprete:
             return self._ejecutar_let(sentencia)
         elif tipo == 'asignar':
             return self._ejecutar_asignacion(sentencia)
+        elif tipo == 'asignar_indice':
+            return self._ejecutar_asignacion_indice(sentencia)
+        elif tipo == 'asignar_campo':
+            return self._ejecutar_asignacion_campo(sentencia)
         elif tipo == 'if':
             return self._ejecutar_if(sentencia)
         elif tipo == 'while':
@@ -163,6 +171,8 @@ class Interprete:
             return {'tipo': 'continue', 'etiqueta': sentencia[1]}
         elif tipo == 'match':
             return self._ejecutar_match(sentencia)
+        elif tipo == 'bloque':
+            return self._ejecutar_bloque(sentencia)
         elif tipo == 'llamada':
             return self._ejecutar_llamada(sentencia)
         elif tipo == 'binop':
@@ -174,7 +184,7 @@ class Interprete:
         elif tipo == 'string':
             return sentencia[1]
         elif tipo == 'char':
-            return sentencia[1]
+            return CaracterOxigen(sentencia[1])
         elif tipo == 'bool':
             return sentencia[1]
         elif tipo == 'var':
@@ -187,13 +197,22 @@ class Interprete:
         tipo = nodo[2]
         valor = nodo[3]
         mutable = nodo[4]
-        
-        valor_ejecutado = None
+
         if valor is not None:
             valor_ejecutado = self._ejecutar_expresion(valor)
+        else:
+            # sin valor inicial usa el valor por defecto del tipo
+            valor_ejecutado = self._valor_por_defecto(tipo)
         
         self.entorno_actual.declarar(nombre, valor_ejecutado, mutable)
         return None
+    
+    def _valor_por_defecto(self, tipo):
+        valores_por_defecto = {
+            'i32': 0, 'f64': 0.0, 'bool': False,
+            'char': CaracterOxigen(''), 'String': '',
+        }
+        return valores_por_defecto.get(tipo, None)
     
     def _ejecutar_asignacion(self, nodo):
         nombre = nodo[1]
@@ -201,6 +220,29 @@ class Interprete:
         
         valor_ejecutado = self._ejecutar_expresion(valor)
         self.entorno_actual.asignar(nombre, valor_ejecutado)
+        return None
+    
+    def _ejecutar_asignacion_indice(self, nodo):
+        # arreglo[indice] = valor;
+        base = self._ejecutar_expresion(nodo[1])
+        indice = self._ejecutar_expresion(nodo[2])
+        valor = self._ejecutar_expresion(nodo[3])
+        if not isinstance(base, list):
+            raise Exception("No se puede asignar por indice: no es un arreglo")
+        if not isinstance(indice, int) or indice < 0 or indice >= len(base):
+            raise Exception("Indice fuera de rango")
+        # "base" es la misma lista guardada en el Entorno
+        base[indice] = valor
+        return None
+    
+    def _ejecutar_asignacion_campo(self, nodo):
+        # struct.campo = valor;
+        base = self._ejecutar_expresion(nodo[1])
+        campo = nodo[2]
+        valor = self._ejecutar_expresion(nodo[3])
+        if not isinstance(base, dict):
+            raise Exception("No se puede asignar el campo: no es un struct")
+        base[campo] = valor
         return None
     
     def _ejecutar_if(self, nodo):
@@ -312,6 +354,15 @@ class Interprete:
         self.entorno_actual = entorno_anterior
         return resultado_final
     
+    def _ejecutar_bloque(self, nodo):
+        # Crea su propio scope, igual que el cuerpo de un if/while/loop solo que sin condicion
+        cuerpo = nodo[1]
+        entorno_anterior = self.entorno_actual
+        self.entorno_actual = Entorno(self.entorno_actual)
+        resultado = self._ejecutar_lista_sentencias(cuerpo)
+        self.entorno_actual = entorno_anterior
+        return resultado
+    
     def _ejecutar_return(self, nodo):
         valor = nodo[1]
         if valor is not None:
@@ -325,14 +376,16 @@ class Interprete:
             self.entorno_actual.declarar_struct(nombre, campos)
             return None
     
-    def _formatear_valor(self, valor):
+    def _formatear_valor(self, valor, dentro_de_arreglo=False):
         # Formatea un valor como Rust lo mostraria con {} (o {:?}) y los booleanos van en minuscula true/false
         if isinstance(valor, bool):
             return 'true' if valor else 'false'
         if isinstance(valor, list):
-            return '[' + ', '.join(self._formatear_valor(v) for v in valor) + ']'
+            return '[' + ', '.join(self._formatear_valor(v, dentro_de_arreglo=True) for v in valor) + ']'
         if valor is None:
             return 'None'
+        if isinstance(valor, str) and dentro_de_arreglo:
+            return f'"{valor}"'
         return str(valor)
 
     def _formatear_println(self, argumentos):
@@ -372,6 +425,8 @@ class Interprete:
                     return 'i32'
                 if isinstance(valor, float):
                     return 'f64'
+                if isinstance(valor, CaracterOxigen):
+                    return 'char'
                 if isinstance(valor, str):
                     return 'String'
                 if isinstance(valor, list):
@@ -459,38 +514,42 @@ class Interprete:
         izquierda = self._ejecutar_expresion(nodo[2])
         derecha = self._ejecutar_expresion(nodo[3])
         
-        if operador == '+':
-            return izquierda + derecha
-        elif operador == '-':
-            return izquierda - derecha
-        elif operador == '*':
-            return izquierda * derecha
-        elif operador == '/':
-            if derecha == 0:
-                raise Exception("Division por cero")
-            resultado = izquierda / derecha
-            # i32 / i32 debe dar i32 (division entera, truncando hacia 0 como en Rust y no float)
-            if isinstance(izquierda, int) and isinstance(derecha, int):
-                return int(resultado)  # int() trunca hacia cero, igual que Rust
-            return resultado
-        elif operador == '%':
-            if isinstance(izquierda, int) and isinstance(derecha, int):
-                # Rust usa division truncada el signo del resultado sigue al dividendo)
-                cociente_truncado = int(izquierda / derecha) if derecha != 0 else 0
-                return izquierda - cociente_truncado * derecha
-            return izquierda % derecha
-        elif operador == '==':
-            return izquierda == derecha
-        elif operador == '!=':
-            return izquierda != derecha
-        elif operador == '>':
-            return izquierda > derecha
-        elif operador == '>=':
-            return izquierda >= derecha
-        elif operador == '<':
-            return izquierda < derecha
-        elif operador == '<=':
-            return izquierda <= derecha
+        # Si los operandos son de tipos incompatibles, lanza TypeError para que de None
+        try:
+            if operador == '+':
+                return izquierda + derecha
+            elif operador == '-':
+                return izquierda - derecha
+            elif operador == '*':
+                return izquierda * derecha
+            elif operador == '/':
+                if derecha == 0:
+                    raise Exception("Division por cero")
+                resultado = izquierda / derecha
+                # i32 / i32 debe dar i32 (division entera, truncando hacia 0 como en Rust y no float)
+                if isinstance(izquierda, int) and isinstance(derecha, int):
+                    return int(resultado)  # int() trunca hacia cero, igual que Rust
+                return resultado
+            elif operador == '%':
+                if isinstance(izquierda, int) and isinstance(derecha, int):
+                    # Rust usa division truncada el signo del resultado sigue al dividendo)
+                    cociente_truncado = int(izquierda / derecha) if derecha != 0 else 0
+                    return izquierda - cociente_truncado * derecha
+                return izquierda % derecha
+            elif operador == '==':
+                return izquierda == derecha
+            elif operador == '!=':
+                return izquierda != derecha
+            elif operador == '>':
+                return izquierda > derecha
+            elif operador == '>=':
+                return izquierda >= derecha
+            elif operador == '<':
+                return izquierda < derecha
+            elif operador == '<=':
+                return izquierda <= derecha
+        except TypeError:
+            return None
         
         raise Exception(f"Operador desconocido: {operador}")
     

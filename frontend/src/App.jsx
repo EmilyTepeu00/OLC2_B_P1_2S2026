@@ -154,12 +154,14 @@ export default function App() {
 
       if ((data.errores ?? []).length === 0) {
         appendConsole('success', 'Compilacion exitosa.')
-        appendConsole('output', '--- Programa en ejecucion ---')
-        ;(data.salida ?? []).forEach((line) => appendConsole('output', line))
-        appendConsole('output', '--- Fin de la ejecucion ---')
       } else {
         appendConsole('error', `Se encontraron ${data.errores.length} error(es).`)
       }
+
+      // Muestra siempre la salida, con o sin errores
+      appendConsole('output', '--- Programa en ejecucion ---')
+      ;(data.salida ?? []).forEach((line) => appendConsole('output', line))
+      appendConsole('output', '--- Fin de la ejecucion ---')
       appendConsole('meta', `Tiempo de ejecucion: ${data.tiempo ?? '—'}`)
     } catch (err) {
       appendConsole('error', `Error de conexion: ${err.message}`)

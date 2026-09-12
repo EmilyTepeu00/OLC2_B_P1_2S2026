@@ -230,6 +230,11 @@
   line-height: 1.8;
 }
 
+.console__line {
+  /* Respeta los saltos de linea dentro de un mismo valor (un String con "\n") */
+  white-space: pre-wrap;
+}
+
 .console__line--hint {
   color: var(--text-faint);
 }

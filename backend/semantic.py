@@ -46,20 +46,25 @@ class AnalizadorSemantico:
         self.tabla_global = TablaSimbolos()
         self.tabla_actual = self.tabla_global
         self.errores = []
-        self.lineas = {}       # id(nodo_sentencia) -> numero de linea (viene del parser)
-        self.linea_actual = 0  # ultima linea conocida, se actualiza al recorrer sentencias
-        self.structs = {}      # nombre_struct -> {nombre_campo: tipo_campo}
+        self.lineas = {}            # id(nodo_sentencia) -> numero de linea (viene del parser)
+        self.columnas = {}          # id(nodo_sentencia) -> columna (viene del parser)
+        self.linea_actual = 0       # ultima linea conocida, se actualiza al recorrer sentencias
+        self.columna_actual = None  # ultima columna conocida
+        self.structs = {}           # nombre_struct -> {nombre_campo: tipo_campo}
     
     def _linea_de(self, nodo):
-        # Devuelve la linea real de un nodo si esta registrada o la ultima linea conocida
+        # Devuelve la linea real de un nodo si esta registrada o la ultima linea conocida y actualiza self.columna_actual
         if isinstance(nodo, tuple) and id(nodo) in self.lineas:
             self.linea_actual = self.lineas[id(nodo)]
+            self.columna_actual = self.columnas.get(id(nodo))
         return self.linea_actual
     
-    def analizar(self, ast, lineas=None):
+    def analizar(self, ast, lineas=None, columnas=None):
         self.errores = []
         self.lineas = lineas or {}
+        self.columnas = columnas or {}
         self.linea_actual = 0
+        self.columna_actual = None
         self.structs = {}
         programa = ast
         
@@ -109,6 +114,9 @@ class AnalizadorSemantico:
 
         # Registrar parametros como variables
         for nom_param, tipo_param in parametros:
+            # El tipo "[T; N]" llega del parser como la tupla y se normaliza a "[T]" que usa el tipo INFERIDO de un arreglo literal
+            if isinstance(tipo_param, tuple) and tipo_param[0] == 'array':
+                tipo_param = f'[{tipo_param[1]}]'
             simbolo = Simbolo(nom_param, 'variable', tipo_param, True)
             simbolo.linea = linea_funcion
             ok, error = self.tabla_actual.agregar(nom_param, simbolo)
@@ -133,12 +141,21 @@ class AnalizadorSemantico:
             self._analizar_let(sentencia)
         elif sentencia[0] == 'asignar':
             self._analizar_asignacion(sentencia)
+        elif sentencia[0] == 'asignar_indice':
+            self._analizar_expresion(sentencia[1])
+            self._analizar_expresion(sentencia[2])
+            self._analizar_expresion(sentencia[3])
+        elif sentencia[0] == 'asignar_campo':
+            self._analizar_expresion(sentencia[1])
+            self._analizar_expresion(sentencia[3])
         elif sentencia[0] == 'if':
             self._analizar_if(sentencia)
         elif sentencia[0] == 'while':
             self._analizar_while(sentencia)
         elif sentencia[0] == 'loop':
             self._analizar_loop(sentencia)
+        elif sentencia[0] == 'bloque':
+            self._analizar_bloque(sentencia)
         elif sentencia[0] == 'return':
             self._analizar_retorno(sentencia)
         elif sentencia[0] == 'llamada':
@@ -164,6 +181,11 @@ class AnalizadorSemantico:
         valor = nodo_let[3]
         mutable = nodo_let[4]
         
+        # El tipo declarado como "[T; N]" llega al parser como la tupla
+        # El tipo inferido de un arreglo literal se calcula como el string "[T]"
+        if isinstance(tipo, tuple) and tipo[0] == 'array':
+            tipo = f'[{tipo[1]}]'
+        
         # Si tiene valor, validar la expresion y obtener su tipo
         tipo_valor = None
         if valor is not None:
@@ -180,6 +202,7 @@ class AnalizadorSemantico:
                 self.errores.append({
                     'tipo': 'Semantico',
                     'linea': self.linea_actual,
+                    'columna': self.columna_actual,
                     'mensaje': f"Tipos incompatibles: no se puede asignar {tipo_valor} a {tipo} en variable {nombre}"
                 })
         
@@ -190,6 +213,7 @@ class AnalizadorSemantico:
             self.errores.append({
                 'tipo': 'Semantico',
                 'linea': self.linea_actual,
+                'columna': self.columna_actual,
                 'mensaje': f"Variable ya declarada: {nombre}"
             })
     
@@ -203,6 +227,7 @@ class AnalizadorSemantico:
             self.errores.append({
                 'tipo': 'Semantico',
                 'linea': self.linea_actual,
+                'columna': self.columna_actual,
                 'mensaje': f"Variable no declarada: {nombre}"
             })
             return
@@ -212,6 +237,7 @@ class AnalizadorSemantico:
             self.errores.append({
                 'tipo': 'Semantico',
                 'linea': self.linea_actual,
+                'columna': self.columna_actual,
                 'mensaje': f"Variable inmutable: {nombre}"
             })
             return
@@ -228,6 +254,7 @@ class AnalizadorSemantico:
                 self.errores.append({
                     'tipo': 'Semantico',
                     'linea': self.linea_actual,
+                    'columna': self.columna_actual,
                     'mensaje': f"Tipos incompatibles: no se puede asignar {tipo_valor} a {tipo_var} en {nombre}"
                 })
     
@@ -242,17 +269,18 @@ class AnalizadorSemantico:
             self.errores.append({
                 'tipo': 'Semantico',
                 'linea': self.linea_actual,
+                'columna': self.columna_actual,
                 'mensaje': f"La condicion del if debe ser booleana, pero es {tipo_cond}"
             })
         
         # Nuevo ambito para el bloque
-        self.tabla_actual = TablaSimbolos(self.tabla_actual)
+        self.tabla_actual = self.tabla_actual.crear_hijo()
         for sentencia in cuerpo_entonces:
             self._analizar_sentencia(sentencia)
         self.tabla_actual = self.tabla_actual.padre
         
         if cuerpo_sino:
-            self.tabla_actual = TablaSimbolos(self.tabla_actual)
+            self.tabla_actual = self.tabla_actual.crear_hijo()
             if isinstance(cuerpo_sino, list):
                 for sentencia in cuerpo_sino:
                     self._analizar_sentencia(sentencia)
@@ -270,10 +298,11 @@ class AnalizadorSemantico:
             self.errores.append({
                 'tipo': 'Semantico',
                 'linea': self.linea_actual,
+                'columna': self.columna_actual,
                 'mensaje': f"La condicion del while debe ser booleana, pero es {tipo_cond}"
             })
         
-        self.tabla_actual = TablaSimbolos(self.tabla_actual)
+        self.tabla_actual = self.tabla_actual.crear_hijo()
         for sentencia in cuerpo:
             self._analizar_sentencia(sentencia)
         self.tabla_actual = self.tabla_actual.padre
@@ -282,7 +311,14 @@ class AnalizadorSemantico:
         etiqueta = nodo_loop[1]
         cuerpo = nodo_loop[2]
         
-        self.tabla_actual = TablaSimbolos(self.tabla_actual)
+        self.tabla_actual = self.tabla_actual.crear_hijo()
+        for sentencia in cuerpo:
+            self._analizar_sentencia(sentencia)
+        self.tabla_actual = self.tabla_actual.padre
+    
+    def _analizar_bloque(self, nodo_bloque):
+        cuerpo = nodo_bloque[1]
+        self.tabla_actual = self.tabla_actual.crear_hijo()
         for sentencia in cuerpo:
             self._analizar_sentencia(sentencia)
         self.tabla_actual = self.tabla_actual.padre
@@ -310,6 +346,7 @@ class AnalizadorSemantico:
             self.errores.append({
                 'tipo': 'Semantico',
                 'linea': self.linea_actual,
+                'columna': self.columna_actual,
                 'mensaje': f"Funcion no declarada: {nombre}"
             })
             return
@@ -320,6 +357,7 @@ class AnalizadorSemantico:
                 self.errores.append({
                     'tipo': 'Semantico',
                     'linea': self.linea_actual,
+                    'columna': self.columna_actual,
                     'mensaje': f"Numero incorrecto de argumentos para {nombre}: esperaba {len(simbolo.parametros)}, recibio {len(argumentos)}"
                 })
     
@@ -330,6 +368,7 @@ class AnalizadorSemantico:
             self.errores.append({
                 'tipo': 'Semantico',
                 'linea': self.linea_actual,
+                    'columna': self.columna_actual,
                 'mensaje': f"Variable no declarada: {nombre}"
             })
     
@@ -353,19 +392,23 @@ class AnalizadorSemantico:
                     self.errores.append({
                         'tipo': 'Semantico',
                         'linea': self.linea_actual,
+                        'columna': self.columna_actual,
                         'mensaje': f"Operador '+' no permitido entre {tipo_izq} y {tipo_der}"
                     })
 
-            # Multiplicacion: i32 * String
+            # Multiplicacion: i32 * String o String * i32
             elif operador == '*':
                 if tipo_izq in ['i32', 'f64'] and tipo_der in ['i32', 'f64']:
                     pass
                 elif tipo_izq == 'i32' and tipo_der == 'String':
                     pass
+                elif tipo_izq == 'String' and tipo_der == 'i32':
+                    pass
                 elif tipo_izq is not None and tipo_der is not None:
                     self.errores.append({
                         'tipo': 'Semantico',
                         'linea': self.linea_actual,
+                        'columna': self.columna_actual,
                         'mensaje': f"Operador '*' no permitido entre {tipo_izq} y {tipo_der}"
                     })
 
@@ -377,6 +420,7 @@ class AnalizadorSemantico:
                     self.errores.append({
                         'tipo': 'Semantico',
                         'linea': self.linea_actual,
+                        'columna': self.columna_actual,
                         'mensaje': f"Operador '{operador}' no permitido entre {tipo_izq} y {tipo_der}"
                     })
         
@@ -387,6 +431,7 @@ class AnalizadorSemantico:
                     self.errores.append({
                         'tipo': 'Semantico',
                         'linea': self.linea_actual,
+                        'columna': self.columna_actual,
                         'mensaje': f"Operador '{operador}' no permitido entre {tipo_izq} y {tipo_der}"
                     })
         
@@ -397,6 +442,7 @@ class AnalizadorSemantico:
                     self.errores.append({
                         'tipo': 'Semantico',
                         'linea': self.linea_actual,
+                        'columna': self.columna_actual,
                         'mensaje': f"Operador '{operador}' solo funciona con booleanos, pero se encontró {tipo_izq} y {tipo_der}"
                     })
         
@@ -415,6 +461,7 @@ class AnalizadorSemantico:
                 self.errores.append({
                     'tipo': 'Semantico',
                     'linea': self.linea_actual,
+                    'columna': self.columna_actual,
                     'mensaje': f"Operador '!' solo funciona con booleanos, pero se encontró {tipo_op}"
                 })
         elif operador == '-':
@@ -422,6 +469,7 @@ class AnalizadorSemantico:
                 self.errores.append({
                     'tipo': 'Semantico',
                     'linea': self.linea_actual,
+                    'columna': self.columna_actual,
                     'mensaje': f"Operador '-' unario solo funciona con numeros, pero se encontró {tipo_op}"
                 })
         
@@ -459,6 +507,7 @@ class AnalizadorSemantico:
                 self.errores.append({
                     'tipo': 'Semantico',
                     'linea': self.linea_actual,
+                    'columna': self.columna_actual,
                     'mensaje': f"El indice de un arreglo debe ser i32, se recibio {tipo_indice}"
                 })
             # Verificar rango solo en tiempo de analisis cuando el indice es un literal y el arreglo es una variable declarada con un arreglo literal
@@ -470,6 +519,7 @@ class AnalizadorSemantico:
                         self.errores.append({
                             'tipo': 'Semantico',
                             'linea': self.linea_actual,
+                            'columna': self.columna_actual,
                             'mensaje': f"Indice fuera de los limites del arreglo '{expr[1][1]}' (tamano {tam})."
                         })
         elif expr[0] == 'array_slice':
@@ -484,6 +534,7 @@ class AnalizadorSemantico:
                 self.errores.append({
                     'tipo': 'Semantico',
                     'linea': self.linea_actual,
+                    'columna': self.columna_actual,
                     'mensaje': f"Struct no declarado: {nombre_struct}"
                 })
             else:
@@ -495,6 +546,7 @@ class AnalizadorSemantico:
                         self.errores.append({
                             'tipo': 'Semantico',
                             'linea': self.linea_actual,
+                            'columna': self.columna_actual,
                             'mensaje': f"El struct '{nombre_struct}' no tiene el campo '{campo}'"
                         })
                     else:
@@ -504,6 +556,7 @@ class AnalizadorSemantico:
                             self.errores.append({
                                 'tipo': 'Semantico',
                                 'linea': self.linea_actual,
+                                'columna': self.columna_actual,
                                 'mensaje': f"Tipos incompatibles en el campo '{campo}' de '{nombre_struct}': se esperaba {tipo_campo}, se recibio {tipo_val}"
                             })
                 faltantes = set(campos_decl.keys()) - nombres_dados
@@ -511,6 +564,7 @@ class AnalizadorSemantico:
                     self.errores.append({
                         'tipo': 'Semantico',
                         'linea': self.linea_actual,
+                        'columna': self.columna_actual,
                         'mensaje': f"Faltan campos al inicializar '{nombre_struct}': {', '.join(sorted(faltantes))}"
                     })
         elif expr[0] == 'field_access':
@@ -521,6 +575,7 @@ class AnalizadorSemantico:
                     self.errores.append({
                         'tipo': 'Semantico',
                         'linea': self.linea_actual,
+                        'columna': self.columna_actual,
                         'mensaje': f"El struct '{tipo_base}' no tiene el campo '{expr[2]}'"
                     })
 
@@ -546,7 +601,7 @@ class AnalizadorSemantico:
             return f'[{tipo_elem}]' if tipo_elem else None
         elif expr[0] == 'array_access':
             tipo_base = self._obtener_tipo_expresion(expr[1])
-            if tipo_base and tipo_base.startswith('[') and tipo_base.endswith(']'):
+            if isinstance(tipo_base, str) and tipo_base.startswith('[') and tipo_base.endswith(']'):
                 return tipo_base[1:-1]
             return None
         elif expr[0] == 'array_slice':
@@ -582,11 +637,13 @@ class AnalizadorSemantico:
                     return 'f64' if (tipo_izq == 'f64' or tipo_der == 'f64') else 'i32'
                 return None
             
-            # Multiplicacion: numeros o i32 * String (SOLO i32 * String)
+            # Multiplicacion: numeros, i32 * String o String * i32
             elif operador == '*':
                 if tipo_izq in ['i32', 'f64'] and tipo_der in ['i32', 'f64']:
                     return 'f64' if (tipo_izq == 'f64' or tipo_der == 'f64') else 'i32'
                 if tipo_izq == 'i32' and tipo_der == 'String':
+                    return 'String'
+                if tipo_izq == 'String' and tipo_der == 'i32':
                     return 'String'
                 return None
             

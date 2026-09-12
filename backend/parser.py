@@ -5,12 +5,20 @@ from backend.lexer import tokens, lexer, escanear_errores_lexicos, encontrar_col
 
 errores_parseo = []
 lineas_nodo = {}
+columnas_nodo = {}
+_codigo_actual = ''  # para calcular columnas dentro de las reglas de gramatica
 
 inicio = 'programa'
 
-precedencia = (
-    ('left', 'SUMA', 'RESTA'),
-    ('left', 'MULT', 'DIV', 'RESTO'),
+precedence = (
+    ('left', 'O'),                                              # ||
+    ('left', 'Y'),                                              # &&
+    ('left', 'IGUAL', 'DIFERENTE'),                             # == !=
+    ('left', 'MAYOR', 'MAYORIGUAL', 'MENOR', 'MENORIGUAL'),     # > >= < <=
+    ('left', 'SUMA', 'RESTA'),                                  # + -
+    ('left', 'MULT', 'DIV', 'RESTO'),                           # * / %
+    ('right', 'NO', 'UMINUS'),                                  # ! y el "-" unario
+    ('left', 'PUNTO', 'CORCHIZQ'),                              # .campo, .metodo(), [indice]
 )
 
 def p_programa(p):
@@ -88,34 +96,50 @@ def p_sentencia(p):
                  | sentencia_return
                  | sentencia_break
                  | sentencia_continue
+                 | sentencia_bloque
                  | expresion PUNTOCOMA"""
     p[0] = p[1]
     linea = p.lineno(1)
     if linea and isinstance(p[0], tuple):
         lineas_nodo[id(p[0])] = linea
+        try:
+            lexpos = p.lexpos(1)
+            if lexpos is not None and _codigo_actual:
+                columnas_nodo[id(p[0])] = encontrar_columna(_codigo_actual, lexpos)
+        except Exception:
+            pass
 
-def p_declaracion_let(p):
-    """declaracion_let : LET ID DOSPUNTOS tipo ASIGN expresion PUNTOCOMA
-                       | LET ID ASIGN expresion PUNTOCOMA
-                       | LET MUT ID DOSPUNTOS tipo ASIGN expresion PUNTOCOMA
-                       | LET MUT ID ASIGN expresion PUNTOCOMA
-                       | LET ID DOSPUNTOS tipo PUNTOCOMA
-                       | LET MUT ID DOSPUNTOS tipo PUNTOCOMA"""
-    if len(p) == 8 and p[2] != 'mut':
-        p[0] = ('let', p[2], p[4], p[6], False)
-    elif len(p) == 6 and p[2] != 'mut':
-        p[0] = ('let', p[2], None, p[4], False)
-    elif len(p) == 9:
-        p[0] = ('let', p[3], p[5], p[7], True)
-    elif len(p) == 7 and p[2] == 'mut':
-        p[0] = ('let', p[3], None, p[5], True)
-    elif len(p) == 6 and p[2] != 'mut':
-        p[0] = ('let', p[2], p[4], None, False)
-    elif len(p) == 7 and p[2] == 'mut':
-        p[0] = ('let', p[3], p[5], None, True)
+def p_sentencia_bloque(p):
+    "sentencia_bloque : LLAVEIZQ lista_sentencias LLAVEDER"
+    # Crea su propio scope
+    p[0] = ('bloque', p[2])
+
+def p_declaracion_let_tipada_con_valor(p):
+    "declaracion_let : LET ID DOSPUNTOS tipo ASIGN valor PUNTOCOMA"
+    p[0] = ('let', p[2], p[4], p[6], False)
+
+def p_declaracion_let_inferida_con_valor(p):
+    "declaracion_let : LET ID ASIGN valor PUNTOCOMA"
+    p[0] = ('let', p[2], None, p[4], False)
+
+def p_declaracion_let_mut_tipada_con_valor(p):
+    "declaracion_let : LET MUT ID DOSPUNTOS tipo ASIGN valor PUNTOCOMA"
+    p[0] = ('let', p[3], p[5], p[7], True)
+
+def p_declaracion_let_mut_inferida_con_valor(p):
+    "declaracion_let : LET MUT ID ASIGN valor PUNTOCOMA"
+    p[0] = ('let', p[3], None, p[5], True)
+
+def p_declaracion_let_tipada_sin_valor(p):
+    "declaracion_let : LET ID DOSPUNTOS tipo PUNTOCOMA"
+    p[0] = ('let', p[2], p[4], None, False)
+
+def p_declaracion_let_mut_tipada_sin_valor(p):
+    "declaracion_let : LET MUT ID DOSPUNTOS tipo PUNTOCOMA"
+    p[0] = ('let', p[3], p[5], None, True)
 
 def p_asignacion(p):
-    """asignacion : ID ASIGN expresion PUNTOCOMA
+    """asignacion : ID ASIGN valor PUNTOCOMA
                   | ID MASIGUAL expresion PUNTOCOMA
                   | ID MENOSIGUAL expresion PUNTOCOMA
                   | ID MULTIGUAL expresion PUNTOCOMA
@@ -132,14 +156,51 @@ def p_asignacion(p):
         }[tipo_token]
         p[0] = ('asignar', p[1], ('binop', operador, ('var', p[1]), p[3]))
 
+def p_asignacion_indice(p):
+    """asignacion : expresion CORCHIZQ expresion CORCHDER ASIGN valor PUNTOCOMA
+                  | expresion CORCHIZQ expresion CORCHDER MASIGUAL expresion PUNTOCOMA
+                  | expresion CORCHIZQ expresion CORCHDER MENOSIGUAL expresion PUNTOCOMA
+                  | expresion CORCHIZQ expresion CORCHDER MULTIGUAL expresion PUNTOCOMA
+                  | expresion CORCHIZQ expresion CORCHDER DIVIGUAL expresion PUNTOCOMA
+                  | expresion CORCHIZQ expresion CORCHDER RESTOIGUAL expresion PUNTOCOMA"""
+    # arreglo[indice] = valor;  (para swaps en sort_array())
+    tipo_token = p.slice[5].type
+    base, indice = p[1], p[3]
+    if tipo_token == 'ASIGN':
+        p[0] = ('asignar_indice', base, indice, p[6])
+    else:
+        operador = {
+            'MASIGUAL': '+', 'MENOSIGUAL': '-',
+            'MULTIGUAL': '*', 'DIVIGUAL': '/', 'RESTOIGUAL': '%',
+        }[tipo_token]
+        actual = ('array_access', base, indice)
+        p[0] = ('asignar_indice', base, indice, ('binop', operador, actual, p[6]))
+
+def p_asignacion_campo(p):
+    """asignacion : expresion PUNTO ID ASIGN valor PUNTOCOMA
+                  | expresion PUNTO ID MASIGUAL expresion PUNTOCOMA
+                  | expresion PUNTO ID MENOSIGUAL expresion PUNTOCOMA
+                  | expresion PUNTO ID MULTIGUAL expresion PUNTOCOMA
+                  | expresion PUNTO ID DIVIGUAL expresion PUNTOCOMA
+                  | expresion PUNTO ID RESTOIGUAL expresion PUNTOCOMA"""
+    # struct.campo = valor;
+    tipo_token = p.slice[4].type
+    base, campo = p[1], p[3]
+    if tipo_token == 'ASIGN':
+        p[0] = ('asignar_campo', base, campo, p[5])
+    else:
+        operador = {
+            'MASIGUAL': '+', 'MENOSIGUAL': '-',
+            'MULTIGUAL': '*', 'DIVIGUAL': '/', 'RESTOIGUAL': '%',
+        }[tipo_token]
+        actual = ('field_access', base, campo)
+        p[0] = ('asignar_campo', base, campo, ('binop', operador, actual, p[5]))
+
 def p_sentencia_if(p):
     """sentencia_if : IF expresion LLAVEIZQ lista_sentencias LLAVEDER
                     | IF expresion LLAVEIZQ lista_sentencias LLAVEDER ELSE LLAVEIZQ lista_sentencias LLAVEDER
-                    | IF expresion LLAVEIZQ lista_sentencias LLAVEDER ELSE sentencia_if
-                    | IF ID LLAVEIZQ lista_sentencias LLAVEDER
-                    | IF ID LLAVEIZQ lista_sentencias LLAVEDER ELSE LLAVEIZQ lista_sentencias LLAVEDER
-                    | IF ID LLAVEIZQ lista_sentencias LLAVEDER ELSE sentencia_if"""
-    condicion = ('var', p[2]) if p.slice[2].type == 'ID' else p[2]
+                    | IF expresion LLAVEIZQ lista_sentencias LLAVEDER ELSE sentencia_if"""
+    condicion = p[2]
     if len(p) == 6:
         p[0] = ('if', condicion, p[4], None)
     elif len(p) == 10:
@@ -148,10 +209,8 @@ def p_sentencia_if(p):
         p[0] = ('if', condicion, p[4], p[7])
 
 def p_sentencia_while(p):
-    """sentencia_while : WHILE expresion LLAVEIZQ lista_sentencias LLAVEDER
-                       | WHILE ID LLAVEIZQ lista_sentencias LLAVEDER"""
-    condicion = ('var', p[2]) if p.slice[2].type == 'ID' else p[2]
-    p[0] = ('while', condicion, p[4])
+    "sentencia_while : WHILE expresion LLAVEIZQ lista_sentencias LLAVEDER"
+    p[0] = ('while', p[2], p[4])
 
 def p_sentencia_loop(p):
     """sentencia_loop : LOOP LLAVEIZQ lista_sentencias LLAVEDER
@@ -162,10 +221,8 @@ def p_sentencia_loop(p):
         p[0] = ('loop', p[1], p[5])
 
 def p_sentencia_match(p):
-    """sentencia_match : MATCH expresion LLAVEIZQ casos_match LLAVEDER
-                       | MATCH ID LLAVEIZQ casos_match LLAVEDER"""
-    condicion = ('var', p[2]) if p.slice[2].type == 'ID' else p[2]
-    p[0] = ('match', condicion, p[4])
+    "sentencia_match : MATCH expresion LLAVEIZQ casos_match LLAVEDER"
+    p[0] = ('match', p[2], p[4])
 
 def p_casos_match(p):
     """casos_match : caso_match
@@ -190,7 +247,7 @@ def p_caso_match(p):
         p[0] = ('caso', patron, cuerpo)
 
 def p_sentencia_return(p):
-    """sentencia_return : RETURN expresion PUNTOCOMA
+    """sentencia_return : RETURN valor PUNTOCOMA
                         | RETURN PUNTOCOMA"""
     if len(p) == 4:
         p[0] = ('return', p[2])
@@ -231,7 +288,7 @@ def p_expresion_binaria(p):
 
 def p_expresion_unaria(p):
     """expresion : NO expresion
-                 | RESTA expresion"""
+                 | RESTA expresion %prec UMINUS"""
     p[0] = ('unop', p[1], p[2])
 
 def p_expresion_literal(p):
@@ -251,9 +308,13 @@ def p_expresion_literal(p):
     else:
         p[0] = ('literal', p[1])
 
-def p_expresion_struct_init(p):
-    """expresion : ID LLAVEIZQ valores_struct LLAVEDER"""
-    p[0] = ('struct_init', p[1], p[3])
+def p_valor(p):
+    """valor : expresion
+             | ID LLAVEIZQ valores_struct LLAVEDER"""
+    if len(p) == 2:
+        p[0] = p[1]
+    else:
+        p[0] = ('struct_init', p[1], p[3])
 
 def p_expresion_variable(p):
     "expresion : ID"
@@ -282,8 +343,8 @@ def p_expresion_string_estatico(p):
 
 def p_lista_argumentos(p):
     """lista_argumentos : 
-                        | expresion
-                        | lista_argumentos COMA expresion"""
+                        | valor
+                        | lista_argumentos COMA valor"""
     if len(p) == 1:
         p[0] = []
     elif len(p) == 2:
@@ -307,8 +368,8 @@ def p_expresion_array_repetido(p):
 
 def p_lista_elementos(p):
     """lista_elementos : 
-                      | expresion
-                      | lista_elementos COMA expresion"""
+                      | valor
+                      | lista_elementos COMA valor"""
     if len(p) == 1:
         p[0] = []
     elif len(p) == 2:
@@ -349,14 +410,17 @@ def p_campo_struct(p):
 
 def p_valores_struct(p):
     """valores_struct : valor_struct
-                      | valores_struct COMA valor_struct"""
+                      | valores_struct COMA valor_struct
+                      | valores_struct COMA"""
     if len(p) == 2:
         p[0] = [p[1]]
-    else:
+    elif len(p) == 4:
         p[0] = p[1] + [p[3]]
+    else:
+        p[0] = p[1]
 
 def p_valor_struct(p):
-    """valor_struct : ID DOSPUNTOS expresion"""
+    """valor_struct : ID DOSPUNTOS valor"""
     p[0] = (p[1], p[3])
 
 def p_expresion_field_access(p):
@@ -372,10 +436,20 @@ def p_sentencia_error(p):
 
 def p_error(p):
     if p:
-        columna = encontrar_columna(p.lexer.lexdata, p.lexpos)
+        # Se busca hacia atras el ultimo caracter antes de ese token y se reporta ahi
+        texto = p.lexer.lexdata
+        pos = p.lexpos - 1
+        while pos >= 0 and texto[pos] in ' \t\r\n':
+            pos -= 1
+        if pos >= 0:
+            linea = texto.count('\n', 0, pos) + 1
+            columna = encontrar_columna(texto, pos) + 1
+        else:
+            linea = p.lineno
+            columna = encontrar_columna(texto, p.lexpos)
         errores_parseo.append({
             'tipo': 'Sintactico',
-            'linea': p.lineno,
+            'linea': linea,
             'columna': columna,
             'mensaje': f"Token inesperado: '{p.value}'.",
         })
@@ -390,11 +464,13 @@ def p_error(p):
 parser = yacc.yacc()
 
 def parsear(codigo):
-    global errores_parseo, lineas_nodo
+    global errores_parseo, lineas_nodo, columnas_nodo, _codigo_actual
     errores_parseo = []
     lineas_nodo = {}
+    columnas_nodo = {}
+    _codigo_actual = codigo
     # Ver que se detecten todos los errores lexicos del archivo
     errores_lex = escanear_errores_lexicos(codigo)
     lexer.lineno = 1
     resultado = parser.parse(codigo, lexer=lexer, tracking=True)
-    return resultado, errores_parseo, errores_lex, lineas_nodo
+    return resultado, errores_parseo, errores_lex, lineas_nodo, columnas_nodo

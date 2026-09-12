@@ -34,7 +34,7 @@ def ejecutar():
         codigo = data['codigo']
 
         # ANALISIS LEXICO Y SINTACTICO
-        ast, errores_sintacticos, errores_lexicos, lineas = parsear(codigo)
+        ast, errores_sintacticos, errores_lexicos, lineas, columnas = parsear(codigo)
 
         errores_totales = list(errores_lexicos) + list(errores_sintacticos)
 
@@ -47,11 +47,16 @@ def ejecutar():
         if ast is not None:
             # ANALISIS SEMANTICO (sigue corriendo aunque haya habido siempre que exista el AST
             analizador = AnalizadorSemantico()
-            errores_semanticos = analizador.analizar(ast, lineas=lineas)
+            errores_semanticos = analizador.analizar(ast, lineas=lineas, columnas=columnas)
             errores_totales += errores_semanticos
 
             # EJECUCION (siempre que haya AST)
-            lineas_con_error_semantico = {e['linea'] for e in errores_semanticos if e.get('linea')}
+            lineas_con_error_semantico = {
+                e['linea'] for e in errores_semanticos
+                if e.get('linea')
+                and 'no permitido entre' not in str(e.get('mensaje', ''))
+                and not str(e.get('mensaje', '')).startswith('Tipos incompatibles')
+            }
             interprete = Interprete()
             salida, errores_ejecucion = interprete.ejecutar(
                 ast, lineas=lineas, lineas_con_error_semantico=lineas_con_error_semantico
@@ -213,6 +218,15 @@ def generar_nodos_ast(ast):
                 ast_nodes.append({'label': 'Asignacion ' + nombre, 'depth': depth})
                 if len(nodo) > 2:
                     recorrer(nodo[2], depth + 1)
+            elif tipo == 'asignar_indice':
+                ast_nodes.append({'label': 'Asignacion a indice', 'depth': depth})
+                recorrer(nodo[1], depth + 1)
+                recorrer(nodo[2], depth + 1)
+                recorrer(nodo[3], depth + 1)
+            elif tipo == 'asignar_campo':
+                ast_nodes.append({'label': 'Asignacion a campo .' + str(nodo[2]), 'depth': depth})
+                recorrer(nodo[1], depth + 1)
+                recorrer(nodo[3], depth + 1)
             elif tipo == 'if':
                 ast_nodes.append({'label': 'If', 'depth': depth})
                 recorrer(nodo[1], depth + 1)
@@ -234,6 +248,10 @@ def generar_nodos_ast(ast):
                 etiqueta = f" {nodo[1]}" if len(nodo) > 1 and nodo[1] else ''
                 ast_nodes.append({'label': 'Loop' + etiqueta, 'depth': depth})
                 for item in nodo[2]:
+                    recorrer(item, depth + 1)
+            elif tipo == 'bloque':
+                ast_nodes.append({'label': 'Bloque', 'depth': depth})
+                for item in nodo[1]:
                     recorrer(item, depth + 1)
             elif tipo == 'match':
                 ast_nodes.append({'label': 'Match', 'depth': depth})
